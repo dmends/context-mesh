@@ -1115,3 +1115,19 @@ test('doctor fails with a clear result for a client without plugin support', asy
   assert.equal(diagnosis.ok, false);
   assert.ok(diagnosis.checks.some((check) => check.id === 'client' && !check.ok));
 });
+
+test("installation creates default workspace directories and dry-run does not", async (t) => {
+  const { initializePlugin } = await loadInit();
+  const sourceRoot = createPluginFixture(t);
+  const targetRoot = createDirectory(t, "plugin-workspace-dirs-");
+
+  await initializePlugin({ sourceRoot, targetRoot, client: "jetbrains", dryRun: true });
+  assert.equal(existsSync(path.join(targetRoot, "workspace")), false);
+
+  const result = await initializePlugin({ sourceRoot, targetRoot, client: "jetbrains" });
+  assert.equal(result.status, "installed");
+  assert.equal(existsSync(path.join(targetRoot, "workspace", ".context")), true);
+  assert.equal(existsSync(path.join(targetRoot, "workspace", ".discovery")), true);
+  assert.equal(existsSync(path.join(targetRoot, "workspace", ".knowledge")), true);
+  assert.equal(existsSync(path.join(targetRoot, "workspace", "src")), true);
+});

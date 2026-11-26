@@ -21,6 +21,13 @@ const MIN_NODE_MAJOR = 22;
 const SUPPORTED_CLIENTS = new Set(['copilot-cli', 'jetbrains', 'vscode']);
 const SUPPORTED_AGENTS = new Set(['copilot', 'claude-code', 'cursor', 'gemini-cli', 'antigravity', 'codex']);
 
+export const DEFAULT_WORKSPACE_DIRECTORIES = [
+  'workspace/.context',
+  'workspace/.discovery',
+  'workspace/.knowledge',
+  'workspace/src',
+];
+
 const AGENT_PROMPT_DEST = {
   copilot: (slug) => `.github/prompts/${slug}.prompt.md`,
   'claude-code': (slug) => `.claude/skills/${slug}/SKILL.md`,
@@ -145,6 +152,15 @@ async function assertDirectory(path, label) {
   }
   if (info.isSymbolicLink() || !info.isDirectory()) {
     throw new Error(`${label} must be a real directory, not a symlink or file: ${path}`);
+  }
+}
+
+export async function initializeWorkspaceDirectories(targetRoot) {
+  for (const relativePath of DEFAULT_WORKSPACE_DIRECTORIES) {
+    const segments = relativePath.split('/');
+    await assertNoSymlinkPath(targetRoot, segments);
+    const fullPath = join(targetRoot, ...segments);
+    await mkdir(fullPath, { recursive: true });
   }
 }
 
@@ -1234,8 +1250,9 @@ export async function installAgentPlugin({
   const manifest = await readManifest(source);
 
   await installAgentFiles({ sourceRoot: source, targetRoot: target, agent, manifest, forceOverwrite });
+  await initializeWorkspaceDirectories(target);
 
-  return { status: 'installed', agent, target };
+  return { status: 'installed', agent, target, workspaceDirectories: DEFAULT_WORKSPACE_DIRECTORIES };
 }
 
 export async function initializePlugin({
@@ -1498,6 +1515,7 @@ export async function initializePlugin({
             }
           : undefined,
       nextStep: getNextStep(client, destination, join(target, '.github', 'prompts')),
+      workspaceDirectories: DEFAULT_WORKSPACE_DIRECTORIES,
     };
   }
 
@@ -1621,6 +1639,8 @@ export async function initializePlugin({
     changedFiles.push(...legacy.removed);
   }
 
+  await initializeWorkspaceDirectories(target);
+
   let pluginActivated = false;
   if (shouldActivatePlugin) {
     try {
@@ -1700,6 +1720,7 @@ export async function initializePlugin({
     changedFiles,
     externalCommands: [],
     nextStep: getNextStep(client, destination, join(target, '.github', 'prompts')),
+    workspaceDirectories: DEFAULT_WORKSPACE_DIRECTORIES,
   };
 }
 
