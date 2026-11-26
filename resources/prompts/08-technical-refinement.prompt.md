@@ -14,7 +14,7 @@ A seleção deste prompt é um pedido explícito para detalhar e registrar as hi
 Não altere instruções globais do projeto, configurações pessoais ou MCP; não instale componentes nem sincronize repositórios. Gere arquivos somente dentro de `workspace/`.
 
 - **Pré-requisitos:** artefato válido de `story-task-breakdown`.
-- **Fontes:** `workspace/.discovery/<iniciativa>/story-task-breakdown/` (histórias, tasks, plano de execução) e artefato de `tech-solution-specification`.
+- **Fontes:** `workspace/.discovery/<iniciativa>/results/story-task-breakdown/` (histórias, tasks, plano de execução) e artefato de `tech-solution-specification`.
 - **Saída registrada:** `technical-refinement`.
 - **Template instalado:** `.copilot/plugins/smith/templates/008-technical-refinement.md`.
 
@@ -28,10 +28,10 @@ Use `run-id` como ID estável da iniciativa e `tema` como nome do subnó atual. 
 node .copilot/plugins/smith/core/cli.mjs ready --workspace . --run-id <run-id> --tema "<tema>" --input <arquivo-fonte> [--input <outro-arquivo-fonte>...]
 ```
 
-Confirme que `technical-refinement` aparece em `readySteps`. Se não aparecer, explique o bloqueio e não gere nem registre a saída. Para cada história: detalhe critérios de aceite (Given/When/Then ou equivalente), refine as tasks com granularidade executável, identifique riscos e dependências técnicas, e valide cobertura com a especificação de solução. Salve o documento em `workspace/.discovery/<iniciativa>/technical-refinement/`.
+Confirme que `technical-refinement` aparece em `readySteps`. Se não aparecer, explique o bloqueio e não gere nem registre a saída. Para cada história: detalhe critérios de aceite (Given/When/Then ou equivalente), refine as tasks com granularidade executável, identifique riscos e dependências técnicas, e valide cobertura com a especificação de solução. Salve o documento em `workspace/.discovery/<iniciativa>/results/technical-refinement/`.
 
 Depois que o arquivo existir, registre seu caminho relativo à raiz do projeto:
 
 ```bash
-node .copilot/plugins/smith/core/cli.mjs complete --workspace . --run-id <run-id> --tema "<tema>" --step technical-refinement --artifact technical-refinement=workspace/.discovery/<iniciativa>/technical-refinement/<arquivo>.md --input <arquivo-fonte> [--input <outro-arquivo-fonte>...]
+node .copilot/plugins/smith/core/cli.mjs complete --workspace . --run-id <run-id> --tema "<tema>" --step technical-refinement --artifact technical-refinement=workspace/.discovery/<iniciativa>/results/technical-refinement/<arquivo>.md --input <arquivo-fonte> [--input <outro-arquivo-fonte>...]
 ```

@@ -28,10 +28,10 @@ Reutilize o `run-id` da iniciativa, o mesmo `tema` do subnó e a lista estável 
 node .copilot/plugins/smith/core/cli.mjs ready --workspace . --run-id <run-id> --tema "<tema>" --input <arquivo-fonte> [--input <outro-arquivo-fonte>...]
 ```
 
-Confirme que `story-task-breakdown` aparece em `readySteps` e confira a especificação reportada. Se o pré-requisito estiver ausente ou inválido, não prossiga. Produza a quebra e o plano, apresente ambos ao usuário e aguarde aprovação explícita antes de gravar. Salve os dois arquivos em `workspace/.discovery/<iniciativa>/story-task-breakdown/`, cada um com o próximo número disponível e sem sobrescrita.
+Confirme que `story-task-breakdown` aparece em `readySteps` e confira a especificação reportada. Se o pré-requisito estiver ausente ou inválido, não prossiga. Produza a quebra e o plano, apresente ambos ao usuário e aguarde aprovação explícita antes de gravar. Salve os dois arquivos em `workspace/.discovery/<iniciativa>/results/story-task-breakdown/`, cada um com o próximo número disponível e sem sobrescrita.
 
 Depois que ambos os arquivos existirem, registre os dois caminhos relativos à raiz do projeto:
 
 ```bash
-node .copilot/plugins/smith/core/cli.mjs complete --workspace . --run-id <run-id> --tema "<tema>" --step story-task-breakdown --artifact story-task-breakdown=workspace/.discovery/<iniciativa>/story-task-breakdown/<arquivo-de-historias>.md --artifact execution-plan=workspace/.discovery/<iniciativa>/story-task-breakdown/<arquivo-de-plano>.md --input <arquivo-fonte> [--input <outro-arquivo-fonte>...]
+node .copilot/plugins/smith/core/cli.mjs complete --workspace . --run-id <run-id> --tema "<tema>" --step story-task-breakdown --artifact story-task-breakdown=workspace/.discovery/<iniciativa>/results/story-task-breakdown/<arquivo-de-historias>.md --artifact execution-plan=workspace/.discovery/<iniciativa>/results/story-task-breakdown/<arquivo-de-plano>.md --input <arquivo-fonte> [--input <outro-arquivo-fonte>...]
 ```

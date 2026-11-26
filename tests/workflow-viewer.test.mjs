@@ -314,7 +314,8 @@ test('projeto sem execuções oferece um prompt conversacional completo para ini
   assert.match(copiedPrompt, /Não adivinhe nem monte o caminho do runtime/);
   assert.match(copiedPrompt, /\$HOME\/Library\/Application Support\/Smith\/versions\/0\.0\.1/);
   assert.match(copiedPrompt, /init \\\n\s+--workspace \. \\\n\s+--run-id "<run-id>" \\\n\s+--tema "<tema>"/);
-  assert.match(copiedPrompt, /workspace\/\.discovery\/<run-id>\/business-epic\//);
+  assert.match(copiedPrompt, /workspace\/\.discovery\/<run-id>\/input\/business-stories\//);
+  assert.match(copiedPrompt, /workspace\/\.discovery\/<run-id>\/input\/transcripts\//);
   assert.doesNotMatch(elements.content.textContent, /Nome da iniciativa|Primeiro tema|Nova iniciativa/);
 });
 

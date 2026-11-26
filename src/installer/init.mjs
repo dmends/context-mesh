@@ -516,15 +516,16 @@ function renderReadme(pluginPath, version, initialProjectPrompt) {
 \`\`\`
 workspace/
 ├── .context/                        ← contexto comum lido em discovery e especificação de solução
-├── .discovery/<iniciativa>/
-│   ├── as-is-knowledge/             ← etapa Knowledge As-Is
-│   ├── business-epic/               ← insumos e épico inicial
-│   ├── decision-record/             ← decisões adotadas
-│   ├── discovery-consolidation/     ← consolidado de discovery
-│   ├── story-task-breakdown/        ← histórias, tasks e plano
-│   ├── tech-solution-specification/ ← ARD e especificação de solução
-│   ├── technical-refinement/        ← refinamento técnico
-│   └── validation-gate/             ← aprovação explícita
+└── .discovery/<iniciativa>/
+    └── results/
+        ├── as-is-knowledge/             ← etapa Knowledge As-Is
+        ├── business-epic/               ← insumos e épico inicial
+        ├── decision-record/             ← decisões adotadas
+        ├── discovery-consolidation/     ← consolidado de discovery
+        ├── story-task-breakdown/        ← histórias, tasks e plano
+        ├── tech-solution-specification/ ← ARD e especificação de solução
+        ├── technical-refinement/        ← refinamento técnico
+        └── validation-gate/             ← aprovação explícita
 └── .knowledge/
     ├── legado/
     │   └── <iniciativa>/            ← knowledge As-Is (legado)
@@ -563,7 +564,8 @@ run-id: minha-iniciativa
 tema: Nome do Tema
 
 fontes:
-- workspace/.discovery/minha-iniciativa/business-epic
+- workspace/.discovery/minha-iniciativa/input/business-stories
+- workspace/.discovery/minha-iniciativa/input/transcripts
 \`\`\`
 
 **Knowledge As-Is**
@@ -588,7 +590,7 @@ run-id: minha-iniciativa
 tema: Nome do Tema
 
 fontes:
-- workspace/.discovery/minha-iniciativa/business-epic
+- workspace/.discovery/minha-iniciativa/results/business-epic
 - workspace/.knowledge
 - workspace/src
 \`\`\`
@@ -602,7 +604,7 @@ run-id: minha-iniciativa
 tema: Nome do Tema
 
 fontes:
-- workspace/.discovery/minha-iniciativa/decision-record
+- workspace/.discovery/minha-iniciativa/results/decision-record
 \`\`\`
 
 **Gate de validação**
@@ -664,7 +666,7 @@ ${cmd('core/cli.mjs')} status \\
   --workspace . \\
   --run-id <run-id> \\
   --tema "<tema>" \\
-  --input workspace/.discovery/<run-id>/business-epic/<arquivo>.md
+  --input workspace/.discovery/<run-id>/input/business-stories/<arquivo>.md
 \`\`\`
 
 \`start\` e \`resume\` são sinônimos de \`status\` e criam o estado da execução se ele ainda não existir.
@@ -676,7 +678,7 @@ ${cmd('core/cli.mjs')} ready \\
   --workspace . \\
   --run-id <run-id> \\
   --tema "<tema>" \\
-  --input workspace/.discovery/<run-id>/business-epic/<arquivo>.md
+  --input workspace/.discovery/<run-id>/input/business-stories/<arquivo>.md
 \`\`\`
 
 ### Publicar artefatos de um step
@@ -689,7 +691,7 @@ ${cmd('core/cli.mjs')} publish \\
   --run-id <run-id> \\
   --tema "<tema>" \\
   --step business-epic \\
-  --input workspace/.discovery/<run-id>/business-epic/<arquivo>.md \\
+  --input workspace/.discovery/<run-id>/input/business-stories/<arquivo>.md \\
   << 'EOF'
 {"business-epic": "# Épico\\n\\n...conteúdo completo em Markdown..."}
 EOF
@@ -705,8 +707,8 @@ ${cmd('core/cli.mjs')} complete \\
   --run-id <run-id> \\
   --tema "<tema>" \\
   --step business-epic \\
-  --artifact business-epic=workspace/.discovery/<run-id>/business-epic/001-<tema>.md \\
-  --input workspace/.discovery/<run-id>/business-epic/<arquivo>.md
+  --artifact business-epic=workspace/.discovery/<run-id>/results/business-epic/001-<tema>.md \\
+  --input workspace/.discovery/<run-id>/input/business-stories/<arquivo>.md
 \`\`\`
 
 ### Aprovar o gate de validação
@@ -717,14 +719,14 @@ ${cmd('core/cli.mjs')} ready \\
   --workspace . \\
   --run-id <run-id> \\
   --tema "<tema>" \\
-  --input workspace/.discovery/<run-id>/business-epic/<arquivo>.md
+  --input workspace/.discovery/<run-id>/input/business-stories/<arquivo>.md
 
 # Em seguida, aprove com o fingerprint retornado:
 ${cmd('core/cli.mjs')} approve \\
   --workspace . \\
   --run-id <run-id> \\
   --tema "<tema>" \\
-  --input workspace/.discovery/<run-id>/business-epic/<arquivo>.md \\
+  --input workspace/.discovery/<run-id>/input/business-stories/<arquivo>.md \\
   --approval-fingerprint <sha256-do-ready> \\
   --confirmation APPROVE
 \`\`\`

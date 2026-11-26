@@ -41,24 +41,34 @@ describe('cli.mjs', () => {
     assert.equal(initialized.nodeId, 'cadastro-e-ciclo-de-vida');
     assert.ok(initialized.steps.every(({ status }) => status === StepStatus.PENDING));
     for (const directory of [
-      'workspace/.discovery/saft-orchestration/as-is-knowledge',
-      'workspace/.discovery/saft-orchestration/business-epic',
-      'workspace/.discovery/saft-orchestration/decision-record',
-      'workspace/.discovery/saft-orchestration/discovery-consolidation',
-      'workspace/.discovery/saft-orchestration/story-task-breakdown',
-      'workspace/.discovery/saft-orchestration/tech-solution-specification',
-      'workspace/.discovery/saft-orchestration/technical-refinement',
-      'workspace/.discovery/saft-orchestration/validation-gate',
+      'workspace/.discovery/saft-orchestration/results/as-is-knowledge',
+      'workspace/.discovery/saft-orchestration/results/business-epic',
+      'workspace/.discovery/saft-orchestration/results/decision-record',
+      'workspace/.discovery/saft-orchestration/results/discovery-consolidation',
+      'workspace/.discovery/saft-orchestration/results/story-task-breakdown',
+      'workspace/.discovery/saft-orchestration/results/tech-solution-specification',
+      'workspace/.discovery/saft-orchestration/results/technical-refinement',
+      'workspace/.discovery/saft-orchestration/results/validation-gate',
     ]) {
       assert.equal(existsSync(join(workspace, directory)), true, `${directory} should be created`);
     }
-    for (const obsoleteDirectory of ['input', 'results', 'plans']) {
-      assert.equal(
-        existsSync(join(workspace, 'workspace/.discovery/saft-orchestration', obsoleteDirectory)),
-        false,
-        `${obsoleteDirectory} should not be created`,
-      );
+    assert.equal(existsSync(join(workspace, 'workspace/.discovery/saft-orchestration/results')), true);
+    for (const directory of [
+      'workspace/.discovery/saft-orchestration/input/business-stories',
+      'workspace/.discovery/saft-orchestration/input/transcripts',
+    ]) {
+      assert.equal(existsSync(join(workspace, directory)), true, `${directory} should be created`);
     }
+    assert.equal(
+      existsSync(join(workspace, 'workspace/.discovery/saft-orchestration/plans')),
+      false,
+      'plans should not be created',
+    );
+    assert.equal(
+      existsSync(join(workspace, 'workspace/.discovery/saft-orchestration/business-epic')),
+      false,
+      'step folders should only be created under results',
+    );
 
     const persisted = JSON.parse(readFileSync(join(workspace, '.smith/runs/saft-orchestration.json'), 'utf8'));
     assert.equal(persisted.schemaVersion, 1);

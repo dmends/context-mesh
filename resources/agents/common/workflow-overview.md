@@ -32,9 +32,10 @@ Smith estrutura o trabalho de desenvolvimento em fases sequenciais rastreadas pe
 
 - **NÃO criar arquivos .md de nenhum tipo a menos que explicitamente solicitado pelo usuário.**
 - Registre cada tipo de conhecimento no seu destino correto:
-  - `workspace/.discovery/<iniciativa>/as-is-knowledge/`: Comportamento As-Is verificado no código.
-  - `workspace/.discovery/<iniciativa>/business-epic/`: Insumos de negócio e épico inicial.
-  - `workspace/.discovery/<iniciativa>/discovery-consolidation/`: Síntese de discovery.
+  - `workspace/.discovery/<iniciativa>/results/as-is-knowledge/`: Comportamento As-Is verificado no código.
+  - `workspace/.discovery/<iniciativa>/input/business-stories/` e `workspace/.discovery/<iniciativa>/input/transcripts/`: fontes originais de negócio.
+  - `workspace/.discovery/<iniciativa>/results/business-epic/`: épico inicial produzido a partir dessas fontes.
+  - `workspace/.discovery/<iniciativa>/results/discovery-consolidation/`: Síntese de discovery.
   - As demais saídas ficam nas pastas com o nome da etapa correspondente.
 
 ## Gate de Validação

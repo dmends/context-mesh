@@ -28,10 +28,10 @@ Reutilize o `run-id` da iniciativa, o mesmo `tema` do subnó e a lista estável 
 node .copilot/plugins/smith/core/cli.mjs ready --workspace . --run-id <run-id> --tema "<tema>" --input <arquivo-fonte> [--input <outro-arquivo-fonte>...]
 ```
 
-Confirme que `discovery-consolidation` aparece em `readySteps`. Se não aparecer, explique o bloqueio e não gere nem registre a saída. A partir do épico, do knowledge existente e da leitura de código quando pertinente, sintetize o entendimento alcançado: o problema de negócio, os fluxos observados, as convergências e divergências entre as fontes, dependências, riscos e lacunas que ainda exigem investigação. Não declare decisões arquiteturais aqui — documente o resultado da investigação. Salve o documento em `workspace/.discovery/<iniciativa>/discovery-consolidation/`.
+Confirme que `discovery-consolidation` aparece em `readySteps`. Se não aparecer, explique o bloqueio e não gere nem registre a saída. A partir do épico, do knowledge existente e da leitura de código quando pertinente, sintetize o entendimento alcançado: o problema de negócio, os fluxos observados, as convergências e divergências entre as fontes, dependências, riscos e lacunas que ainda exigem investigação. Não declare decisões arquiteturais aqui — documente o resultado da investigação. Salve o documento em `workspace/.discovery/<iniciativa>/results/discovery-consolidation/`.
 
 Depois que o arquivo existir, registre seu caminho relativo à raiz do projeto:
 
 ```bash
-node .copilot/plugins/smith/core/cli.mjs complete --workspace . --run-id <run-id> --tema "<tema>" --step discovery-consolidation --artifact discovery-consolidation=workspace/.discovery/<iniciativa>/discovery-consolidation/<arquivo>.md --input <arquivo-fonte> [--input <outro-arquivo-fonte>...]
+node .copilot/plugins/smith/core/cli.mjs complete --workspace . --run-id <run-id> --tema "<tema>" --step discovery-consolidation --artifact discovery-consolidation=workspace/.discovery/<iniciativa>/results/discovery-consolidation/<arquivo>.md --input <arquivo-fonte> [--input <outro-arquivo-fonte>...]
 ```

@@ -33,7 +33,7 @@ test('installs a local workflow viewer without overwriting existing files', asyn
   const readme = readFileSync(join(options.targetRoot, '.smith/README.md'), 'utf8');
   assert.match(readme, /Pergunte ao usuário qual será o nome da iniciativa \(`--run-id`\)/);
   assert.match(readme, /Pergunte qual é o primeiro tema de negócio \(`--tema`\)/);
-  assert.match(readme, /workspace\/\.discovery\/<run-id>\/business-epic\//);
+  assert.match(readme, /workspace\/\.discovery\/<run-id>\/results\/business-epic\//);
   assert.ok(readme.includes(readFileSync(join(options.sourceRoot, 'instructions/initial-project.md'), 'utf8').trim()));
   assert.equal((await initializePlugin(options)).viewerStatus, 'unchanged');
   writeFileSync(viewer, 'custom user content');
@@ -106,6 +106,8 @@ test('IntelliJ and VS Code use one runtime with nine prompts per project', async
         if (path.endsWith('business-epic.prompt.md')) {
           assert.match(prompt, / publish --workspace /);
           assert.match(prompt, /publish --workspace \. --run-id (?:"<run-id>"|<run-id>) --tema "<tema>"/);
+          assert.match(prompt, /input\/business-stories/);
+          assert.match(prompt, /input\/transcripts/);
           assert.doesNotMatch(prompt, / complete --workspace /);
         }
         assert.match(prompt, /fonte for diretório, liste recursivamente.*arquivos.*--input/i);
@@ -135,7 +137,7 @@ test('IntelliJ and VS Code use one runtime with nine prompts per project', async
       shell: true, cwd: target, encoding: 'utf8', input: JSON.stringify({ 'business-epic': document }),
     });
     assert.equal(publish.status, 0, publish.stderr);
-    assert.equal(readFileSync(join(target, 'workspace/.discovery/fixture/business-epic/001-teste.md'), 'utf8'), document);
+    assert.equal(readFileSync(join(target, 'workspace/.discovery/fixture/results/business-epic/001-teste.md'), 'utf8'), document);
   }
 });
 

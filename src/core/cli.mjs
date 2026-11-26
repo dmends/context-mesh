@@ -31,7 +31,11 @@ const USAGE = `Usage:
 All paths are relative to --workspace (default: current directory).`;
 
 function discoveryDirectories(runId) {
-  return WORKFLOW_STEPS.map(({ id }) => `workspace/.discovery/${runId}/${id}`);
+  return [
+    `workspace/.discovery/${runId}/input/business-stories`,
+    `workspace/.discovery/${runId}/input/transcripts`,
+    ...WORKFLOW_STEPS.map(({ id }) => `workspace/.discovery/${runId}/results/${id}`),
+  ];
 }
 
 async function createDiscoveryDirectories(workspaceRoot, runId) {

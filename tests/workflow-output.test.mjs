@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 const cli = fileURLToPath(new URL('../src/core/cli.mjs', import.meta.url));
-const results = 'workspace/.discovery/motor-recorrencia/business-epic';
+const results = 'workspace/.discovery/motor-recorrencia/results/business-epic';
 const epicTemplate = readFileSync(new URL('../resources/templates/004-business-epic.md', import.meta.url), 'utf8');
 const epicDocument = (tema) => epicTemplate
   .replaceAll('<tema>', tema)
@@ -16,7 +16,7 @@ const epicDocument = (tema) => epicTemplate
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), 'workflow-output-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  const source = 'workspace/.discovery/motor-recorrencia/business-epic/story.txt';
+  const source = 'workspace/.discovery/motor-recorrencia/results/business-epic/story.txt';
   const write = (file, content) => {
     mkdirSync(dirname(join(root, file)), { recursive: true });
     writeFileSync(join(root, file), content);
@@ -31,7 +31,7 @@ function fixture(t) {
 
 test('complete rejects a document in docs or another discovery topic', (t) => {
   const { run, write } = fixture(t);
-  for (const file of ['docs/superpowers/plans/epic.md', 'workspace/.discovery/other/business-epic/epic.md']) {
+  for (const file of ['docs/superpowers/plans/epic.md', 'workspace/.discovery/other/results/business-epic/epic.md']) {
     write(file, 'epic');
     const result = run('complete', ['--step', 'business-epic', '--artifact', `business-epic=${file}`]);
     assert.notEqual(result.status, 0);

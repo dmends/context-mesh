@@ -15,7 +15,7 @@ A seleção deste prompt é um pedido explícito para registrar a decisão no pr
 Não altere instruções globais do projeto, configurações pessoais ou MCP; não instale componentes nem sincronize repositórios. Gere arquivos somente dentro de `workspace/`.
 
 - **Pré-requisitos:** `tech-solution-specification` válida e escolhas que o time tenha explicitamente adotado.
-- **Fontes:** a especificação de solução em `workspace/.discovery/<iniciativa>/tech-solution-specification/` e as escolhas explicitamente aprovadas pelo time (negócio + arquitetura).
+- **Fontes:** a especificação de solução em `workspace/.discovery/<iniciativa>/results/tech-solution-specification/` e as escolhas explicitamente aprovadas pelo time (negócio + arquitetura).
 - **Saída registrada:** `decision-record`.
 - **Template instalado:** `.copilot/plugins/smith/templates/003-decision-record.md`.
 
@@ -29,10 +29,10 @@ Reutilize o `run-id` da iniciativa, o mesmo `tema` do subnó e a lista estável 
 node .copilot/plugins/smith/core/cli.mjs ready --workspace . --run-id <run-id> --tema "<tema>" --input <arquivo-fonte> [--input <outro-arquivo-fonte>...]
 ```
 
-Confirme que `decision-record` aparece em `readySteps` e confira a especificação de solução reportada. Se o pré-requisito estiver ausente ou inválido, não prossiga. Identifique as decisões efetivamente tomadas e aprovadas pelo time. Uma menção ou proposta em transcrição não é uma decisão: registre apenas escolhas adotadas. Grave somente as definições aprovadas em `workspace/.discovery/<iniciativa>/decision-record/`, com o próximo número disponível e sem sobrescrever arquivos.
+Confirme que `decision-record` aparece em `readySteps` e confira a especificação de solução reportada. Se o pré-requisito estiver ausente ou inválido, não prossiga. Identifique as decisões efetivamente tomadas e aprovadas pelo time. Uma menção ou proposta em transcrição não é uma decisão: registre apenas escolhas adotadas. Grave somente as definições aprovadas em `workspace/.discovery/<iniciativa>/results/decision-record/`, com o próximo número disponível e sem sobrescrever arquivos.
 
 Depois que o arquivo existir, registre seu caminho relativo à raiz do projeto:
 
 ```bash
-node .copilot/plugins/smith/core/cli.mjs complete --workspace . --run-id <run-id> --tema "<tema>" --step decision-record --artifact decision-record=workspace/.discovery/<iniciativa>/decision-record/<arquivo>.md --input <arquivo-fonte> [--input <outro-arquivo-fonte>...]
+node .copilot/plugins/smith/core/cli.mjs complete --workspace . --run-id <run-id> --tema "<tema>" --step decision-record --artifact decision-record=workspace/.discovery/<iniciativa>/results/decision-record/<arquivo>.md --input <arquivo-fonte> [--input <outro-arquivo-fonte>...]
 ```

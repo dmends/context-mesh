@@ -32,8 +32,9 @@ node "<pasta-do-runtime>/core/cli.mjs" init \
 O comando `init` não precisa de arquivos de fonte e não executa uma etapa do workflow. Não crie nem edite o JSON manualmente.
 
 ## 5. Confirmar e orientar as fontes
-Confirme ao usuário que a iniciativa e o tema foram registrados. Informe que histórias de negócio e transcrições devem ser colocadas em:
+Confirme ao usuário que a iniciativa e o tema foram registrados. Informe que histórias de negócio e transcrições devem ser colocadas, respectivamente, em:
 
 ```text
-workspace/.discovery/<run-id>/business-epic/
+workspace/.discovery/<run-id>/input/business-stories/
+workspace/.discovery/<run-id>/input/transcripts/
 ```
