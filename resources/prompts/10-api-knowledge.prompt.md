@@ -15,13 +15,15 @@ A seleção deste prompt é um pedido explícito para documentar e registrar a A
 Não altere instruções globais do projeto, configurações pessoais ou MCP; não instale componentes nem sincronize repositórios. Gere arquivos somente dentro de `workspace/`.
 
 - **Pré-requisitos:** nenhum.
-- **Fontes:** `workspace/src/legado/`, `workspace/src/refatorado/` e `workspace/.knowledge/`.
+- **Fontes:** fontes cadastradas com papel `legacy` ou `reference`, além do knowledge de entrada indicado pelo workflow. Não presuma uma estrutura fixa em `workspace/src/`.
 - **Saída registrada:** `knowledge`.
 - **Template instalado:** `.copilot/plugins/smith/templates/000-knowledge-api.md`.
 
 **Economia de Contexto e Subagentes:** Delegue a varredura e leitura de rotas, esquemas DTOs e arquivos de validação a subagentes nativos de exploração, preservando o contexto principal da conversa.
 
 Use `run-id` como ID estável da iniciativa e `tema` como nome do subnó atual. Vários temas compartilham o mesmo `run-id`; mantenha o mesmo tema e a mesma lista de arquivos-fonte em todos os comandos deste subnó. Os caminhos `--input` são relativos à raiz do projeto e não devem incluir artefatos gerados. Antes de redigir, execute:
+
+Consulte `sources list` antes de explorar. Se o usuário indicar uma fonte local não cadastrada, confirme com ele o caminho, o tipo, o papel, o escopo e a stack antes de executar `sources add`; nunca edite `.smith/runs/` manualmente. Respeite o `scope` e limite a análise às fontes selecionadas pelo workflow.
 
 > Se o usuário não informar `run-id` e `tema`, inspecione as iniciativas existentes em `workspace/.discovery/` e apresente sugestões válidas antes de solicitar a definição.
 

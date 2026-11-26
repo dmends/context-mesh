@@ -3,10 +3,9 @@ export const WORKFLOW_ID = 'project-lifecycle';
 export const WORKFLOW_STEPS = Object.freeze([
   {
     id: 'business-epic',
-    inputs: [
-      'workspace/.discovery/<iniciativa>/input/transcripts/',
-      'workspace/.discovery/<iniciativa>/input/business-stories/',
-    ],
+    name: 'Épico de Negócio',
+    inputs: [],
+    sourceRoles: ['documentation'],
     requires: [],
     outputs: ['business-epic'],
     outputDirectory: 'workspace/.discovery/<iniciativa>/results/business-epic',
@@ -18,8 +17,10 @@ export const WORKFLOW_STEPS = Object.freeze([
   },
   {
     id: 'as-is-knowledge',
+    name: 'Knowledge As-Is',
     accumulative: true,
-    inputs: ['workspace/src/legado/', 'workspace/src/refatorado/', 'workspace/.knowledge/'],
+    inputs: [],
+    sourceRoles: ['legacy', 'reference'],
     requires: [],
     outputs: ['knowledge'],
     outputDirectory: 'workspace/.discovery/<iniciativa>/results/as-is-knowledge',
@@ -30,12 +31,14 @@ export const WORKFLOW_STEPS = Object.freeze([
   },
   {
     id: 'discovery-consolidation',
+    name: 'Consolidado de Discovery',
     inputs: [
       'workspace/.discovery/<iniciativa>/results/business-epic/',
       'workspace/.discovery/<iniciativa>/results/as-is-knowledge/',
       'workspace/.knowledge/',
       'workspace/.context/',
     ],
+    sourceRoles: ['documentation'],
     requires: ['business-epic', 'as-is-knowledge'],
     outputs: ['discovery-consolidation'],
     outputDirectory: 'workspace/.discovery/<iniciativa>/results/consolidation',
@@ -48,11 +51,13 @@ export const WORKFLOW_STEPS = Object.freeze([
   },
   {
     id: 'tech-solution-specification',
+    name: 'Especificação Técnica',
     inputs: [
       'workspace/.discovery/<iniciativa>/results/consolidation/',
       'workspace/.discovery/<iniciativa>/input/solution/',
       'workspace/.context/',
     ],
+    sourceRoles: ['target', 'reference', 'integration', 'documentation'],
     requires: ['discovery-consolidation'],
     outputs: ['tech-solution-specification'],
     outputDirectory: 'workspace/.discovery/<iniciativa>/results/tech-solution-specification',
@@ -63,11 +68,13 @@ export const WORKFLOW_STEPS = Object.freeze([
   },
   {
     id: 'decision-record',
+    name: 'Registro de Decisões',
     accumulative: true,
     inputs: [
       'workspace/.discovery/<iniciativa>/results/tech-solution-specification/',
       'escolhas explicitamente adotadas pelo time',
     ],
+    sourceRoles: ['documentation'],
     requires: ['tech-solution-specification'],
     outputs: ['decision-record'],
     outputDirectory: 'workspace/.discovery/<iniciativa>/results/decisions',
@@ -78,6 +85,7 @@ export const WORKFLOW_STEPS = Object.freeze([
   },
   {
     id: 'validation-gate',
+    name: 'Gate de Validação',
     kind: 'approval',
     inputs: [
       'workspace/.discovery/<iniciativa>/results/consolidation/',
@@ -93,6 +101,7 @@ export const WORKFLOW_STEPS = Object.freeze([
   },
   {
     id: 'story-task-breakdown',
+    name: 'Quebra de Histórias e Tasks',
     inputs: [
       'workspace/.discovery/<iniciativa>/results/business-epic/',
       'workspace/.discovery/<iniciativa>/results/tech-solution-specification/',
@@ -111,6 +120,7 @@ export const WORKFLOW_STEPS = Object.freeze([
   },
   {
     id: 'technical-refinement',
+    name: 'Refinamento Técnico',
     inputs: [
       'workspace/.discovery/<iniciativa>/input/plans/',
       'workspace/.discovery/<iniciativa>/results/tech-solution-specification/',

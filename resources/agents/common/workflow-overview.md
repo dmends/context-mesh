@@ -26,6 +26,7 @@ Smith estrutura o trabalho de desenvolvimento em fases sequenciais rastreadas pe
 - **Subagentes nativos:** Sempre use subagentes nativos do próprio ambiente/IDE para leitura de arquivos longos, exploração profunda de código e análise de materiais em `.input/` e `.knowledge/`, evitando poluir a janela de contexto principal com conteúdo bruto.
 - **Delegação via MCP:** Agentes externos (`Claude Code` e `Antigravity`) devem ser acionados via MCP somente para tarefas especializadas (análises arquiteturais profundas ou sínteses de grandes volumes). Tarefas simples e implementação devem ser resolvidas nativamente.
 - **Economia de tokens:** Não faça narrações passo-a-passo ("Vou ler X, agora vou fazer Y"). Responda de forma direta e concisa apenas com o resultado solicitado.
+- **Fontes dinâmicas:** Consulte `sources list` e use somente caminhos locais cadastrados e selecionados pelo workflow. Não presuma pastas `workspace/src/legado` ou `workspace/src/refatorado`; respeite o papel e `scope` da fonte. Cadastre/atualize somente após indicação e confirmação do usuário, pelo CLI, nunca editando `.smith/runs/`.
 
 ## Política de Documentação
 

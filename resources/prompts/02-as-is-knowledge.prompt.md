@@ -14,13 +14,15 @@ A seleção deste prompt é um pedido explícito para analisar e registrar o doc
 Não altere instruções globais do projeto, configurações pessoais ou MCP; não instale componentes nem sincronize repositórios. Gere arquivos somente dentro de `workspace/`.
 
 - **Pré-requisitos:** nenhum.
-- **Fontes:** `workspace/src/legado/`, `workspace/src/refatorado/` e `workspace/.knowledge/`.
+- **Fontes:** fontes cadastradas com papel `legacy` ou `reference`, além do knowledge de entrada indicado pelo workflow. Não presuma uma estrutura fixa em `workspace/src/`.
 - **Saída registrada:** `knowledge`.
 - **Templates instalados:** `.copilot/plugins/smith/templates/000-knowledge-api.md` para contrato de entrada de API; `.copilot/plugins/smith/templates/001-knowledge-as-is.md` para outros comportamentos As-Is.
 
 **Economia de Contexto e Subagentes:** A exploração de código-fonte consome muitos tokens. Nunca leia pastas inteiras diretamente para o contexto principal da conversa. Delegue a busca e leitura de arquivos em `workspace/src/` a subagentes nativos de exploração, trazendo para a conversa principal apenas os trechos de código e comportamentos comprovados necessários para documentar o As-Is.
 
 Use `run-id` como ID estável da iniciativa e `tema` como nome do subnó atual. Vários temas compartilham o mesmo `run-id`; mantenha o mesmo tema e a mesma lista de arquivos-fonte em todos os comandos deste subnó. Os caminhos `--input` são relativos à raiz do projeto e não devem incluir artefatos gerados. Antes de redigir, execute:
+
+Consulte o catálogo com `sources list`. Se o usuário apontar explicitamente uma fonte ainda não cadastrada, proponha `path`, `kind`, `role`, `scope` e stack; só após confirmação registre-a com `sources add` ou ajuste-a com `sources update`. Não inspecione fontes antes da indicação explícita do usuário, não percorra o repositório durante o cadastro e nunca edite `.smith/runs/` manualmente. Respeite o `scope` e use somente fontes `legacy`/`reference` selecionadas pelo workflow.
 
 > Se o usuário não informar `run-id` e `tema`, inspecione as iniciativas existentes em `workspace/.discovery/` e apresente sugestões válidas antes de solicitar a definição.
 

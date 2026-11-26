@@ -81,9 +81,10 @@ DOWNSTREAM
 **Objetivo:** Documentar o comportamento As-Is verificável no código para que o Consolidado (Etapa 3) respeite as fronteiras reais da arquitetura.
 
 **Entradas:**
-- `workspace/src/legado/` — código legado
-- `workspace/src/refatorado/` — código refatorado
-- `workspace/.knowledge/` — base de conhecimento existente
+- Fontes cadastradas com papéis `legacy` e `reference`, com `scope` respeitado.
+- Materiais de conhecimento explicitamente disponibilizados para a iniciativa.
+
+O catálogo de fontes é mantido pelo CLI (`sources add|update|remove|list`). Não é necessário criar pastas `legado/` ou `refatorado/`; cada repositório pode manter seu nome natural em `workspace/src/`.
 
 **Saída:** `knowledge`
 **Pasta:** `workspace/.knowledge/`

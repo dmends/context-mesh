@@ -14,12 +14,14 @@ A seleção deste prompt é um pedido explícito para rastrear e registrar o flu
 Não altere instruções globais do projeto, configurações pessoais ou MCP; não instale componentes nem sincronize repositórios. Gere arquivos somente dentro de `workspace/`.
 
 - **Pré-requisitos:** nenhum.
-- **Fontes:** `workspace/src/legado/`, `workspace/src/refatorado/` e `workspace/.knowledge/`.
+- **Fontes:** fontes cadastradas com papel `legacy` ou `reference`, além do knowledge de entrada indicado pelo workflow. Não presuma uma estrutura fixa em `workspace/src/`.
 - **Template instalado:** `.copilot/plugins/smith/templates/008-knowledge-flow.md`.
 
 **Economia de Contexto e Subagentes:** O rastreamento de fluxos ponta a ponta envolve múltiplos arquivos. Utilize subagentes nativos para seguir o fluxo no código (handlers, serviços, repositórios), trazendo para a conversa principal apenas o mapeamento resumido das etapas e cenários.
 
 Use `run-id` como ID estável da iniciativa e `tema` como nome do fluxo documentado. Os caminhos `--input` são relativos à raiz do projeto e não devem incluir artefatos gerados. Antes de redigir, execute:
+
+Consulte `sources list` antes de explorar. Só proponha o cadastro de uma fonte quando o usuário indicar explicitamente seu caminho, e solicite confirmação de caminho, tipo, papel, escopo e stack antes de `sources add`. Não edite `.smith/runs/` manualmente e respeite o escopo e os papéis das fontes escolhidas pelo workflow.
 
 > Se o usuário não informar `run-id` e `tema`, inspecione as iniciativas existentes em `workspace/.discovery/` e apresente sugestões válidas antes de solicitar a definição.
 

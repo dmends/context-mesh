@@ -11,14 +11,17 @@ export function statePath({ workspaceRoot, runId }) {
 
 export function createInitialNodeState({ runId, tema, nodeId, createdAt = new Date().toISOString() }) {
   return {
-    runId,
+    id: nodeId,
     tema,
-    nodeId,
     createdAt,
     updatedAt: createdAt,
-    steps: Object.fromEntries(
-      WORKFLOW_STEPS.map(({ id }) => [id, { status: StepStatus.PENDING, artifacts: {} }]),
-    ),
+    steps: WORKFLOW_STEPS.map(({ id, name }) => ({
+      name: name ?? id,
+      type: id,
+      status: StepStatus.PENDING,
+      artifacts: [],
+      items: [],
+    })),
   };
 }
 
@@ -29,7 +32,8 @@ export function createInitialState({ runId, createdAt = new Date().toISOString()
     runId,
     createdAt,
     updatedAt: createdAt,
-    nodes: {},
+    sources: [],
+    nodes: [],
   };
 }
 

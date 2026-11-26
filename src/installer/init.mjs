@@ -12,6 +12,7 @@ import { configureMcp as configureMcpServers, previewMcpConfiguration } from '..
 import { isSharedClient, sharedDestination, workflowCommand } from './shared-runtime.mjs';
 import { inspectLegacy, matchesLegacy } from './legacy-runtime.mjs';
 import { WORKFLOW_STEPS } from '../workflows/project-lifecycle.mjs';
+import { StepStatus } from '../domain/status.mjs';
 import { loadTemplate } from '../utils/template-loader.mjs';
 import { atomicWrite } from './file-writer.mjs';
 import { buildPromptContent } from './prompt-builder.mjs';
@@ -373,9 +374,27 @@ async function installPromptWithoutOverwrite(targetRoot, promptPath, content, pr
 
 function renderViewer(template) {
   const marker = '__WORKFLOW_STEPS__';
-  if (template.split(marker).length !== 2) throw new Error('Invalid workflow viewer template');
+  const statusMarker = '__STEP_STATUSES__';
+  if (template.split(marker).length !== 2 || template.split(statusMarker).length !== 2) {
+    throw new Error('Invalid workflow viewer template');
+  }
   const steps = WORKFLOW_STEPS.map(({ id, kind, requires, outputs }) => ({ id, ...(kind && { kind }), requires, outputs }));
-  return Buffer.from(template.replace(marker, JSON.stringify(steps).replaceAll('<', '\\u003c')));
+  const presentation = {
+    PENDING: { label: 'Pendente', className: 'waiting' },
+    RUNNING: { label: 'Em andamento', className: 'active' },
+    COMPLETED: { label: 'Concluída', className: 'done' },
+    FAILED: { label: 'Falhou', className: 'error' },
+    ACCUMULATING: { label: 'Registrado', className: 'recorded' },
+    BLOCKED: { label: 'Bloqueada', className: 'blocked' },
+    READY: { label: 'Pronta', className: 'ready' },
+    SKIPPED: { label: 'Ignorada', className: 'skipped' },
+  };
+  const statuses = Object.fromEntries(Object.entries(StepStatus).map(([key, value]) => [
+    key,
+    { value, ...presentation[key] },
+  ]));
+  const safeJson = (value) => JSON.stringify(value).replaceAll('<', '\\u003c');
+  return Buffer.from(template.replace(marker, safeJson(steps)).replace(statusMarker, safeJson(statuses)));
 }
 
 async function inspectViewer(target, source, destination, destinationExists, forceOverwrite = false) {

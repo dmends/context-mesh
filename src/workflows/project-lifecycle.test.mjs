@@ -24,6 +24,12 @@ describe('WORKFLOW_STEPS', () => {
     }
   });
 
+  it('uses source roles instead of fixed legacy/refactored source folders', () => {
+    const knowledge = WORKFLOW_STEPS.find(({ id }) => id === 'as-is-knowledge');
+    assert.deepEqual(knowledge.sourceRoles, ['legacy', 'reference']);
+    assert.equal(knowledge.inputs.some((input) => input.includes('/legado/') || input.includes('/refatorado/')), false);
+  });
+
   it('step ids are unique', () => {
     const ids = WORKFLOW_STEPS.map((s) => s.id);
     assert.equal(new Set(ids).size, ids.length, 'step ids must be unique');

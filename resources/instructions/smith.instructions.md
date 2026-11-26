@@ -94,23 +94,16 @@ Use os modelos em `plugin/templates/` ao criar documentos desses tipos:
 Os arquivos em `plugin/templates/` são modelos reutilizáveis, não resultados de discovery. Ao preencher um modelo, cite as fontes consultadas em uma seção agregada no final: por exemplo, agendas por data e participantes/áreas, ou código por sistema e nome dos módulos. Não exija paths, URLs, commits, símbolos ou IDs de fonte, nem vincule cada afirmação a uma referência individual. Registre incertezas, divergências e limitações de forma ampla no final; não classifique cada item individualmente, a menos que seja necessário para destacar uma pendência relevante. O template de contrato de entrada descreve somente o que está implementado no código; não presuma que uma especificação externa representa o comportamento atual. O épico consolidado de agendas é uma versão inicial para validação e evolução, não um rascunho nem uma decisão aprovada. Só crie um documento preenchido quando o usuário solicitar o registro.
 
 ## Diretórios de Código-Fonte
-Todo código-fonte fica em `workspace/src/`, organizado primeiro por sistema (`legado` ou `refatorado`), depois por domínio e, por fim, por tipo de projeto:
+Os repositórios podem ficar em `workspace/src/` usando seus nomes naturais; não exija as pastas `legado/` ou `refatorado/`. Registre cada fonte local pelo CLI e selecione-a conforme o papel semântico:
 
 ```text
 workspace/src/
-├── legado/
-│   └── <dominio>/
-│       ├── front/                    # front-end
-│       ├── infra/                    # infraestrutura
-│       ├── ms/                       # microserviços
-│       └── test/                     # testes
-└── refatorado/
-    └── <dominio>/
-        ├── front/
-        ├── infra/
-        ├── ms/
-        └── test/
+├── <repositorio-legado>/
+├── <servico-alvo>/
+└── <contratos-compartilhados>/
 ```
+
+Consulte `sources list` para obter fontes, papéis e escopos. As etapas recebem somente fontes explicitamente cadastradas e autorizadas para o seu papel; nunca amplie `scope` nem varra repositórios não selecionados. Cadastre ou atualize fontes somente após indicação e confirmação do usuário, usando `sources add`/`sources update`; não altere `.smith/runs/` manualmente. O schema persistido aceito é exclusivamente a versão 1; estados incompatíveis falham sem migração ou escrita.
 
 # Orquestração Multi-Agente via MCP
 Economize cota e evite trabalho redundante. Use o MCP `mcp-agents` somente quando a tarefa se beneficiar claramente de outra perspectiva ou de uma análise especializada; tarefas simples devem ser resolvidas diretamente.

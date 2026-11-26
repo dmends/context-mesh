@@ -60,7 +60,7 @@ test('publish chooses the initiative directory and writes the next result withou
   const publication = run('publish', ['--step', 'business-epic'], JSON.stringify({ 'business-epic': document }));
   assert.equal(publication.status, 0, publication.stderr);
   const file = `${results}/business-epic/005-regra-da-primeira-parcela.md`;
-  assert.equal(JSON.parse(publication.stdout).steps['business-epic'].artifacts['business-epic'].path, file);
+  assert.equal(JSON.parse(publication.stdout).steps['business-epic'].artifacts[0].path, file);
   assert.equal(readFileSync(join(root, file), 'utf8'), document);
   assert.equal(readFileSync(join(root, results, 'business-epic', '004-existing.md'), 'utf8'), 'keep');
   assert.equal(existsSync(join(root, 'docs')), false);
@@ -81,14 +81,14 @@ test('one initiative publishes different topic artifacts flat with shared number
   const first = publish('Cadastro e Ciclo de Vida do Contrato');
   assert.equal(first.status, 0, first.stderr);
   assert.equal(
-    JSON.parse(first.stdout).steps['business-epic'].artifacts['business-epic'].path,
+    JSON.parse(first.stdout).steps['business-epic'].artifacts[0].path,
     `${results}/business-epic/001-cadastro-e-ciclo-de-vida-do-contrato.md`,
   );
 
   const second = publish('Regra da Primeira Parcela');
   assert.equal(second.status, 0, second.stderr);
   assert.equal(
-    JSON.parse(second.stdout).steps['business-epic'].artifacts['business-epic'].path,
+    JSON.parse(second.stdout).steps['business-epic'].artifacts[0].path,
     `${results}/business-epic/002-regra-da-primeira-parcela.md`,
   );
   assert.equal(

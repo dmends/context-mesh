@@ -147,7 +147,6 @@ const EXPECTED_PACKAGE_FILES = [
   'core/cli.mjs',
   'core/engine.mjs',
   'core/run-lock.mjs',
-  'core/state-migrations.mjs',
   'core/state-store.mjs',
   'installer/doctor.mjs',
   'installer/file-writer.mjs',

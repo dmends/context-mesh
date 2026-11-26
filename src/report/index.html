@@ -37,22 +37,18 @@
         <button id="refresh-folder" class="btn btn-secondary btn-icon" type="button" hidden title="Atualizar projeto">
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 10a6 6 0 0 1 11.3-2.8M16 10a6 6 0 0 1-11.3 2.8M4 7V3.5M4 7H7.5M16 13v3.5M16 13h-3.5"/></svg>
         </button>
-        <button id="add-initiative" class="btn btn-secondary btn-icon" type="button" title="Nova iniciativa" hidden>
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 10h10M10 5v10"/></svg>
-        </button>
         <button id="choose-folder" class="btn btn-primary btn-icon" type="button" title="Abrir projeto">
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6Z"/></svg>
         </button>
       </div>
     </div>
-    <div id="initiative-form" hidden></div>
     <p id="message" class="msg" role="alert"></p>
     <p id="notice" class="msg" role="status"></p>
   </section>
   <main id="content"></main>
   <div id="overlay" hidden></div>
   <aside id="details" aria-label="Detalhes da etapa" hidden></aside>
-  <script>const steps = __WORKFLOW_STEPS__;</script>
+  <script>const steps = __WORKFLOW_STEPS__; const stepStatuses = __STEP_STATUSES__;</script>
   <script src="workflow.js"></script>
 </body>
 </html>

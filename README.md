@@ -47,7 +47,7 @@ Para instruções detalhadas de build, distribuição e validação por agente, 
 | Fase | Gatilho / Trigger | Entradas | Saída |
 |---|---|---|---|
 | Épico de negócio | `business epic` | Transcrições, histórias de negócio | `business-epic` |
-| Knowledge As-Is | `as-is knowledge` | Código legado, refatorado | `knowledge` |
+| Knowledge As-Is | `as-is knowledge` | Fontes registradas com papel `legacy` ou `reference` | `knowledge` |
 | Consolidado | `consolidar discovery` | Épico + Knowledge As-Is | `discovery-consolidation` |
 | Resultado de discovery | `discovery result` | Fontes de discovery + knowledge | `discovery-result` |
 | Especificação técnica | `tech spec` | Consolidado, ARD | `tech-solution-specification` |
@@ -55,6 +55,33 @@ Para instruções detalhadas de build, distribuição e validação por agente, 
 | **Gate de validação** | `validation gate` | Épico + Spec + Decisões | Requer confirmação `APPROVE` |
 | Quebra de histórias | `story breakdown` | Especificação aprovada | `story-task-breakdown` + `execution-plan` |
 | Detalhamento técnico | `technical refinement` | Histórias e tarefas | `technical-refinement` |
+
+---
+
+## Estado do Workflow e Fontes
+
+Os runs usam exclusivamente o schema 1 em `.smith/runs/<run-id>.json`; nós, etapas, artefatos, itens, snapshots de aprovação e fontes são arrays. Estados incompatíveis não são migrados ou sobrescritos: inicie um novo `run-id`.
+
+Cadastre fontes locais explicitamente. `path` é relativo a `--workspace`; `repository` aponta para diretório e `document` para arquivo. Os papéis aceitos são `legacy`, `target`, `reference`, `integration` e `documentation`. `scope`, se informado, restringe a fonte a um caminho relativo interno.
+
+```bash
+node plugin/core/cli.mjs sources add --workspace . --run-id <run-id> <<'JSON'
+{
+  "id": "servico-legado",
+  "path": "workspace/src/servico-legado",
+  "kind": "repository",
+  "role": "legacy",
+  "stack": "Java",
+  "scope": "src/main"
+}
+JSON
+
+node plugin/core/cli.mjs sources list --workspace . --run-id <run-id>
+node plugin/core/cli.mjs sources update --workspace . --run-id <run-id> < source-atualizada.json
+node plugin/core/cli.mjs sources remove --workspace . --run-id <run-id> --source-id servico-legado
+```
+
+O workflow só apresenta às etapas as fontes cadastradas cujo papel é permitido para aquela etapa. O cadastro valida contenção lexical e resolução real do caminho. Não edite o arquivo de estado manualmente.
 
 ---
 

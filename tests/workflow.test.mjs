@@ -32,6 +32,14 @@ function createWorkspace(t) {
   return workspaceRoot;
 }
 
+function stepState(node, type) {
+  return node.steps.find((step) => step.type === type);
+}
+
+function artifactReference(node, stepType, name) {
+  return stepState(node, stepType).artifacts.find((artifact) => artifact.name === name);
+}
+
 function artifact(workspaceRoot, relativePath, content) {
   const absolutePath = path.join(workspaceRoot, relativePath);
   mkdirSync(path.dirname(absolutePath), { recursive: true });
@@ -153,11 +161,11 @@ test('eight workflow stages declare input, output, and template contracts', asyn
     ],
   );
   for (const step of WORKFLOW_STEPS) {
-    assert.ok(Array.isArray(step.inputs) && step.inputs.length > 0, `${step.id} must declare inputs`);
+    assert.ok(Array.isArray(step.inputs), `${step.id} must declare inputs`);
     assert.ok(Array.isArray(step.outputs), `${step.id} must declare outputs`);
     assert.ok(Array.isArray(step.templates), `${step.id} must declare templates`);
   }
-  assert.ok(WORKFLOW_STEPS[0].inputs.every((input) => input.startsWith('workspace/')));
+  assert.ok(Array.isArray(WORKFLOW_STEPS[0].sourceRoles));
   assert.ok(WORKFLOW_STEPS[2].inputs.every((input) => input.startsWith('workspace/')));
   assert.equal(WORKFLOW_STEPS.find(({ id }) => id === 'as-is-knowledge').accumulative, true);
 });
@@ -220,8 +228,8 @@ test('a missing or invalid stage output blocks dependent stages', async (t) => {
   );
 
   const state = await engine.readWorkflowRun(context);
-  assert.equal(state.steps['business-epic'].status, 'failed');
-  assert.notEqual(state.steps['discovery-consolidation'].status, 'completed');
+  assert.equal(stepState(state, 'business-epic').status, 'failed');
+  assert.notEqual(stepState(state, 'discovery-consolidation').status, 'completed');
 
   await assert.rejects(
     engine.runWorkflowStep({
@@ -292,7 +300,7 @@ test('workflow approval refuses artifacts changed after the user reviewed them',
     /changed|review|fingerprint|approval/i,
   );
   assert.equal(
-    (await engine.readWorkflowRun(context)).steps['validation-gate'].status,
+    stepState(await engine.readWorkflowRun(context), 'validation-gate').status,
     'pending',
   );
 });
@@ -339,24 +347,15 @@ test('approved validation artifacts are passed to downstream stages', async (t) 
     received['validation-gate']['discovery-consolidation']['discovery-consolidation'].path,
     'workspace/.discovery/test-topic/results/consolidation/001-consolidation.md',
   );
-  assert.equal(
-    received['validation-gate']['discovery-consolidation'].path,
-    'workspace/.discovery/test-topic/results/consolidation/001-consolidation.md',
-  );
-
   const savedState = await engine.readWorkflowRun(context);
-  const gateArtifacts = savedState.steps['validation-gate'].approvedArtifacts;
+  const gateArtifacts = stepState(savedState, 'validation-gate').approvedArtifacts;
+  assert.equal(gateArtifacts.find(({ stepType }) => stepType === 'discovery-consolidation').artifacts[0].name, 'discovery-consolidation');
   assert.equal(
-    gateArtifacts['discovery-consolidation'].path,
-    'workspace/.discovery/test-topic/results/consolidation/001-consolidation.md',
-  );
-  assert.equal(gateArtifacts['discovery-consolidation']['discovery-consolidation'], undefined);
-  assert.equal(
-    gateArtifacts['tech-solution-specification'].path,
+    gateArtifacts.find(({ stepType }) => stepType === 'tech-solution-specification').artifacts[0].path,
     'workspace/.discovery/test-topic/results/tech-solution-specification/001-spec.md',
   );
   assert.equal(
-    gateArtifacts['decision-record'].path,
+    gateArtifacts.find(({ stepType }) => stepType === 'decision-record').artifacts[0].path,
     'workspace/.discovery/test-topic/results/decisions/001-decision.md',
   );
 });
@@ -378,8 +377,8 @@ test('execution errors are persisted and stop the dependency chain', async (t) =
   );
 
   const state = await engine.readWorkflowRun(context);
-  assert.equal(state.steps['business-epic'].status, 'failed');
-  assert.match(state.steps['business-epic'].error, /executor failed/);
+  assert.equal(stepState(state, 'business-epic').status, 'failed');
+  assert.match(stepState(state, 'business-epic').error, /executor failed/);
   assert.deepEqual(await engine.getReadySteps(context), ['business-epic', 'as-is-knowledge']);
 });
 
@@ -392,66 +391,22 @@ test('run state can be resumed after reloading it from disk', async (t) => {
   });
 
   const reloaded = await engine.readWorkflowRun(context);
-  assert.equal(reloaded.steps['business-epic'].status, 'completed');
+  assert.equal(stepState(reloaded, 'business-epic').status, 'completed');
   await completeStep(engine, context, 'as-is-knowledge', {
     knowledge: 'workspace/.discovery/test-topic/results/as-is-knowledge/001-knowledge.md',
   });
   assert.deepEqual(await engine.getReadySteps(context), ['as-is-knowledge', 'discovery-consolidation']);
 });
 
-test('legacy single-topic state migrates into an initiative subnode', async (t) => {
+test('invalid pre-schema state is rejected and left untouched', async (t) => {
   const engine = await loadEngine();
   const workspaceRoot = createWorkspace(t);
-  const context = {
-    workspaceRoot,
-    runId: 'legacy-resume',
-    inputFiles: ['workspace/.discovery/test-topic/.input/story.md'],
-  };
-  await completeStep(engine, context, 'business-epic', {
-    'business-epic': 'workspace/.discovery/test-topic/results/business-epic/001-epic.md',
-  });
-  const statePath = path.join(workspaceRoot, '.smith', 'runs', 'legacy-resume.json');
-  const state = JSON.parse(readFileSync(statePath, 'utf8'));
-  const legacyState = {
-    schemaVersion: 1,
-    workflowId: state.workflowId,
-    runId: state.runId,
-    inputFingerprint: state.nodes['test-topic'].inputFingerprint,
-    createdAt: state.createdAt,
-    updatedAt: state.updatedAt,
-    steps: state.nodes['test-topic'].steps,
-  };
-  writeFileSync(statePath, JSON.stringify(legacyState));
-
-  const migratedContext = { ...context, tema: 'Épico Legado' };
-  const resumed = await engine.readWorkflowRun(migratedContext);
-  assert.equal(resumed.steps['business-epic'].status, 'completed');
-  const migrated = JSON.parse(readFileSync(statePath, 'utf8'));
-  assert.equal(migrated.schemaVersion, 4);
-  assert.equal(migrated.nodes['epico-legado'].steps['business-epic'].status, 'completed');
-});
-
-test('v2 state with completed as-is-knowledge migrates to v3 with accumulating status', async (t) => {
-  const engine = await loadEngine();
-  const workspaceRoot = createWorkspace(t);
-  const context = {
-    workspaceRoot,
-    runId: 'v2-migration',
-    inputFiles: ['workspace/.discovery/test-topic/.input/story.md'],
-  };
-  await completeStep(engine, context, 'as-is-knowledge', {
-    knowledge: 'workspace/.discovery/test-topic/results/as-is-knowledge/001-knowledge.md',
-  });
-  const statePath = path.join(workspaceRoot, '.smith', 'runs', 'v2-migration.json');
-  const state = JSON.parse(readFileSync(statePath, 'utf8'));
-  state.schemaVersion = 2;
-  state.nodes['test-topic'].steps['as-is-knowledge'].status = 'completed';
-  writeFileSync(statePath, JSON.stringify(state));
-
-  const resumed = await engine.readWorkflowRun(context);
-  assert.equal(resumed.steps['as-is-knowledge'].status, 'accumulating');
-  const migrated = JSON.parse(readFileSync(statePath, 'utf8'));
-  assert.equal(migrated.schemaVersion, 4);
+  const context = { workspaceRoot, runId: 'invalid-run', inputFiles: ['workspace/.discovery/test-topic/.input/story.md'] };
+  const file = path.join(workspaceRoot, '.smith', 'runs', 'invalid-run.json');
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, '{"schemaVersion":4,"nodes":{}}');
+  await assert.rejects(engine.readWorkflowRun(context), { code: 'INVALID_RUN_STATE' });
+  assert.equal(readFileSync(file, 'utf8'), '{"schemaVersion":4,"nodes":{}}');
 });
 
 test('state from one run is isolated from another run', async (t) => {
@@ -466,8 +421,8 @@ test('state from one run is isolated from another run', async (t) => {
 
   const firstState = await engine.readWorkflowRun(first);
   const secondState = await engine.readWorkflowRun(second);
-  assert.equal(firstState.steps['business-epic'].status, 'completed');
-  assert.equal(secondState.steps['business-epic'].status, 'pending');
+  assert.equal(stepState(firstState, 'business-epic').status, 'completed');
+  assert.equal(stepState(secondState, 'business-epic').status, 'pending');
 });
 
 test('topics under one initiative keep independent state and input fingerprints', async (t) => {
@@ -491,12 +446,12 @@ test('topics under one initiative keep independent state and input fingerprints'
   await completeStep(engine, first, 'business-epic', {
     'business-epic': 'workspace/.discovery/motor-recorrencia/results/business-epic/001-regra-da-primeira-parcela.md',
   });
-  assert.equal((await engine.readWorkflowRun(first)).steps['business-epic'].status, 'completed');
-  assert.equal((await engine.readWorkflowRun(second)).steps['business-epic'].status, 'pending');
+  assert.equal(stepState(await engine.readWorkflowRun(first), 'business-epic').status, 'completed');
+  assert.equal(stepState(await engine.readWorkflowRun(second), 'business-epic').status, 'pending');
   await completeStep(engine, second, 'business-epic', {
     'business-epic': 'workspace/.discovery/motor-recorrencia/results/business-epic/002-cadastro-e-ciclo-de-vida-do-contrato.md',
   });
-  assert.equal((await engine.readWorkflowRun(second)).steps['business-epic'].status, 'completed');
+  assert.equal(stepState(await engine.readWorkflowRun(second), 'business-epic').status, 'completed');
 
   writeFileSync(path.join(workspaceRoot, secondInput), 'second story version two');
   // Re-running business-epic with the changed input detects the fingerprint change and re-executes;
@@ -504,7 +459,7 @@ test('topics under one initiative keep independent state and input fingerprints'
   await completeStep(engine, second, 'business-epic', {
     'business-epic': 'workspace/.discovery/motor-recorrencia/results/business-epic/003-updated.md',
   });
-  assert.equal((await engine.readWorkflowRun(first)).steps['business-epic'].status, 'completed');
+  assert.equal(stepState(await engine.readWorkflowRun(first), 'business-epic').status, 'completed');
 });
 
 test('invalid themes and normalized name collisions are rejected', async (t) => {
@@ -545,7 +500,7 @@ test('changed inputs invalidate prior approval and block dependent stages', asyn
     'business-epic': 'workspace/.discovery/test-topic/results/business-epic/002-epic.md',
   });
   const changedState = await engine.readWorkflowRun(context);
-  assert.equal(changedState.steps['validation-gate'].status, 'pending');
+  assert.equal(stepState(changedState, 'validation-gate').status, 'pending');
   assert.deepEqual(await engine.getReadySteps(context), ['as-is-knowledge', 'discovery-consolidation']);
   await assert.rejects(
     engine.runWorkflowStep({
@@ -583,15 +538,16 @@ test('accumulative step remains in readySteps after completion and can be re-exe
     knowledge: 'workspace/.discovery/test-topic/results/as-is-knowledge/001-knowledge.md',
   });
   const afterFirst = await engine.readWorkflowRun(context);
-  assert.equal(afterFirst.steps['as-is-knowledge'].status, 'accumulating');
+  assert.equal(stepState(afterFirst, 'as-is-knowledge').status, 'accumulating');
   assert.ok((await engine.getReadySteps(context)).includes('as-is-knowledge'));
 
   await completeStep(engine, context, 'as-is-knowledge', {
     knowledge: 'workspace/.discovery/test-topic/results/as-is-knowledge/002-knowledge.md',
   });
   const afterSecond = await engine.readWorkflowRun(context);
-  assert.equal(afterSecond.steps['as-is-knowledge'].status, 'accumulating');
-  assert.equal(afterSecond.steps['as-is-knowledge'].artifacts.knowledge.path,
+  assert.equal(stepState(afterSecond, 'as-is-knowledge').status, 'accumulating');
+  assert.equal(stepState(afterSecond, 'as-is-knowledge').artifacts.length, 2);
+  assert.equal(stepState(afterSecond, 'as-is-knowledge').artifacts.at(-1).path,
     'workspace/.discovery/test-topic/results/as-is-knowledge/002-knowledge.md');
 });
 
@@ -611,14 +567,14 @@ test('accumulative step does not invalidate downstream when re-executed', async 
   });
 
   const before = await engine.readWorkflowRun(context);
-  assert.equal(before.steps['discovery-consolidation'].status, 'completed');
+  assert.equal(stepState(before, 'discovery-consolidation').status, 'completed');
 
   await completeStep(engine, context, 'as-is-knowledge', {
     knowledge: 'workspace/.discovery/test-topic/results/as-is-knowledge/002-knowledge.md',
   });
 
   const after = await engine.readWorkflowRun(context);
-  assert.equal(after.steps['discovery-consolidation'].status, 'completed');
+  assert.equal(stepState(after, 'discovery-consolidation').status, 'completed');
 });
 
 test('accumulative step allows downstream prerequisites to use accumulating status', async (t) => {
@@ -666,10 +622,10 @@ test('concurrent independent stage completions preserve both artifacts', async (
   ]);
   const state = await engine.readWorkflowRun(context);
 
-  assert.equal(state.steps['business-epic'].status, 'completed');
-  assert.equal(state.steps['as-is-knowledge'].status, 'accumulating');
-  assert.equal(state.steps['business-epic'].artifacts['business-epic'].path, 'workspace/.discovery/test-topic/results/business-epic/001-epic.md');
-  assert.equal(state.steps['as-is-knowledge'].artifacts.knowledge.path, 'workspace/.discovery/test-topic/results/as-is-knowledge/001-knowledge.md');
+  assert.equal(stepState(state, 'business-epic').status, 'completed');
+  assert.equal(stepState(state, 'as-is-knowledge').status, 'accumulating');
+  assert.equal(artifactReference(state, 'business-epic', 'business-epic').path, 'workspace/.discovery/test-topic/results/business-epic/001-epic.md');
+  assert.equal(artifactReference(state, 'as-is-knowledge', 'knowledge').path, 'workspace/.discovery/test-topic/results/as-is-knowledge/001-knowledge.md');
 });
 
 test('a stage already running in this session cannot be executed twice', async (t) => {
@@ -722,18 +678,19 @@ test('a stage left running by a prior process is ready to retry', async (t) => {
   await engine.readWorkflowRun(context);
   const statePath = path.join(workspaceRoot, '.smith', 'runs', 'interrupted-stage.json');
   const state = JSON.parse(readFileSync(statePath, 'utf8'));
-  state.nodes['test-topic'].steps['business-epic'] = {
+  const savedNode = state.nodes.find(({ id }) => id === 'test-topic');
+  Object.assign(stepState(savedNode, 'business-epic'), {
     status: 'running',
     executionPid: Number.MAX_SAFE_INTEGER,
     executionToken: 'stale-execution',
-    artifacts: {},
-  };
+    artifacts: [],
+  });
   writeFileSync(statePath, JSON.stringify(state));
 
   assert.deepEqual(await engine.getReadySteps(context), ['business-epic', 'as-is-knowledge']);
   const reconciled = await engine.readWorkflowRun(context);
-  assert.equal(reconciled.steps['business-epic'].status, 'failed');
-  assert.match(reconciled.steps['business-epic'].error, /interrupted/i);
+  assert.equal(stepState(reconciled, 'business-epic').status, 'failed');
+  assert.match(stepState(reconciled, 'business-epic').error, /interrupted/i);
 });
 
 test('workflow CLI starts and resumes runs without copying input contents', (t) => {
@@ -872,11 +829,11 @@ test('workflow CLI does not record approval for a missing or inexact confirmatio
   assert.notEqual(missing.status, 0);
   assert.match(missing.stderr, /interactive terminal/i);
   assert.equal(
-    (await engine.readWorkflowRun(wrongContext)).steps['validation-gate'].status,
+    stepState(await engine.readWorkflowRun(wrongContext), 'validation-gate').status,
     'pending',
   );
   assert.equal(
-    (await engine.readWorkflowRun(missingContext)).steps['validation-gate'].status,
+    stepState(await engine.readWorkflowRun(missingContext), 'validation-gate').status,
     'pending',
   );
 });
@@ -891,7 +848,7 @@ test('workflow CLI requires the reviewed fingerprint before prompting for approv
 
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /--approval-fingerprint is required/);
-  assert.equal((await engine.readWorkflowRun(context)).steps['validation-gate'].status, 'pending');
+  assert.equal(stepState(await engine.readWorkflowRun(context), 'validation-gate').status, 'pending');
 });
 
 test('workflow CLI publish generates file with --name slug', (t) => {
@@ -924,7 +881,7 @@ test('workflow CLI publish generates file with --name slug', (t) => {
 
   assert.equal(result.status, 0, result.stderr);
   const output = JSON.parse(result.stdout);
-  const artifactPath = output.steps['as-is-knowledge'].artifacts.knowledge.path;
+  const artifactPath = output.steps['as-is-knowledge'].artifacts[0].path;
   assert.match(artifactPath, /pix-agendamento\.md$/);
   assert.ok(existsSync(path.join(workspaceRoot, artifactPath)));
 });
@@ -957,7 +914,7 @@ test('workflow CLI publish defaults to nodeId when --name is not provided', (t) 
 
   assert.equal(result.status, 0, result.stderr);
   const output = JSON.parse(result.stdout);
-  const artifactPath = output.steps['as-is-knowledge'].artifacts.knowledge.path;
+  const artifactPath = output.steps['as-is-knowledge'].artifacts[0].path;
   assert.match(artifactPath, /test-topic\.md$/);
 });
 

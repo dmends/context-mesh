@@ -5,7 +5,7 @@ describe('env.mjs', () => {
   it('exports numeric STATE_SCHEMA_VERSION', async () => {
     const { STATE_SCHEMA_VERSION } = await import('./env.mjs');
     assert.equal(typeof STATE_SCHEMA_VERSION, 'number');
-    assert.ok(STATE_SCHEMA_VERSION > 0);
+    assert.equal(STATE_SCHEMA_VERSION, 1);
   });
 
   it('exports numeric MIN_NODE_VERSION', async () => {

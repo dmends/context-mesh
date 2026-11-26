@@ -18,11 +18,13 @@ describe('statePath', () => {
 describe('createInitialNodeState', () => {
   it('has all WORKFLOW_STEPS as PENDING', () => {
     const node = createInitialNodeState({ runId: 'r1', tema: 'test tema', nodeId: 'node1', createdAt: '2024-01-01T00:00:00.000Z' });
-    assert.equal(node.runId, 'r1');
+    assert.equal(node.id, 'node1');
     assert.equal(node.tema, 'test tema');
-    assert.equal(node.nodeId, 'node1');
-    for (const { id } of WORKFLOW_STEPS) {
-      assert.equal(node.steps[id].status, StepStatus.PENDING);
+    for (const [index, { id }] of WORKFLOW_STEPS.entries()) {
+      assert.equal(node.steps[index].type, id);
+      assert.equal(node.steps[index].status, StepStatus.PENDING);
+      assert.deepEqual(node.steps[index].artifacts, []);
+      assert.deepEqual(node.steps[index].items, []);
     }
   });
 });
@@ -33,7 +35,9 @@ describe('createInitialState', () => {
     assert.equal(state.schemaVersion, STATE_SCHEMA_VERSION);
     assert.equal(state.workflowId, WORKFLOW_ID);
     assert.equal(state.runId, 'r1');
-    assert.deepEqual(state.nodes, {});
+    assert.deepEqual(state.nodes, []);
+    assert.deepEqual(state.sources, []);
+    assert.equal(state.schemaVersion, 1);
   });
 });
 

@@ -1,14 +1,34 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { link, lstat, mkdir, readdir, readFile, realpath, unlink, writeFile } from 'node:fs/promises';
+import { link, lstat, mkdir, readdir, readFile, realpath, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { WORKFLOW_STEPS } from '../workflows/project-lifecycle.mjs';
 import { StepStatus } from '../domain/status.mjs';
 import { WorkflowError } from '../domain/errors.mjs';
 import { acquireRunLock, processIsAlive } from './run-lock.mjs';
 import { statePath, createInitialState, createInitialNodeState, saveState } from './state-store.mjs';
-import { migrateState } from './state-migrations.mjs';
 
 const APPROVAL_CONFIRMATION = 'APPROVE';
+const SOURCE_ROLES = Object.freeze(['legacy', 'target', 'reference', 'integration', 'documentation']);
+const SOURCE_KINDS = Object.freeze(['repository', 'document']);
+const STEP_STATUSES = new Set(Object.values(StepStatus));
+
+export function findNode(state, nodeId) {
+  return state.nodes.find((node) => node.id === nodeId);
+}
+
+function resetStep(current, step, status = StepStatus.PENDING, errorMessage) {
+  for (const key of Object.keys(current)) delete current[key];
+  Object.assign(current, emptyStepState(step), { status });
+  if (errorMessage) current.error = errorMessage;
+}
+
+export function findNodeByTema(state, tema) {
+  return state.nodes.find((node) => node.tema === tema);
+}
+
+export function findStep(node, stepType) {
+  return node.steps.find((step) => step.type === stepType);
+}
 
 function topicSlug(value) {
   return value
@@ -21,16 +41,16 @@ function topicSlug(value) {
 
 function assertRunContext({ workspaceRoot, runId, tema, inputFiles }) {
   if (typeof workspaceRoot !== 'string' || workspaceRoot.length === 0) {
-    throw new TypeError('workspaceRoot is required');
+    throw new WorkflowError('INVALID_RUN_CONTEXT', 'workspaceRoot is required');
   }
   if (typeof runId !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(runId)) {
-    throw new TypeError('runId must contain 1–64 letters, numbers, underscores, or hyphens');
+    throw new WorkflowError('INVALID_RUN_CONTEXT', 'runId must contain 1–64 letters, numbers, underscores, or hyphens');
   }
   if (tema !== undefined && (typeof tema !== 'string' || !tema.trim())) {
-    throw new TypeError('tema must be a non-empty string');
+    throw new WorkflowError('INVALID_RUN_CONTEXT', 'tema must be a non-empty string');
   }
   if (!Array.isArray(inputFiles)) {
-    throw new TypeError('inputFiles must be an array');
+    throw new WorkflowError('INVALID_RUN_CONTEXT', 'inputFiles must be an array');
   }
 }
 
@@ -44,7 +64,7 @@ async function resolveRunContext(context) {
   if (inputs.length > 0) {
     for (const input of inputs) {
       if (typeof input !== 'string' || input.length === 0 || isAbsolute(input)) {
-        throw new TypeError('inputFiles must contain non-empty relative paths');
+        throw new WorkflowError('INVALID_RUN_CONTEXT', 'inputFiles must contain non-empty relative paths');
       }
 
       const absolutePath = resolve(workspaceRoot, input);
@@ -82,8 +102,8 @@ async function resolveRunContext(context) {
   if (inputs.length === 0 && !context.tema) {
     throw new WorkflowError('PREREQ_NOT_MET', '--tema is required when no --input files are provided');
   }
-  const legacyTopic = [...topics][0] ?? context.runId;
-  const tema = context.tema?.trim() ?? legacyTopic;
+  const inputTopic = [...topics][0] ?? context.runId;
+  const tema = context.tema?.trim() ?? inputTopic;
   const nodeId = topicSlug(tema);
   if (!nodeId) throw new WorkflowError('PREREQ_NOT_MET', `Invalid tema; it must contain letters or numbers: ${tema}`);
   return {
@@ -91,8 +111,7 @@ async function resolveRunContext(context) {
     workspaceRoot,
     tema,
     nodeId,
-    initiative: context.tema ? context.runId : legacyTopic,
-    legacyTopic,
+    initiative: context.tema ? context.runId : inputTopic,
   };
 }
 
@@ -114,7 +133,7 @@ async function loadOrCreateState(context) {
     try {
       initiativeState = JSON.parse(text);
     } catch (error) {
-      throw new WorkflowError('SCHEMA_MIGRATION_FAILED', `Workflow state is not valid JSON: ${filePath}`, { cause: error });
+      throw new WorkflowError('INVALID_RUN_STATE', `Workflow state is not valid JSON: ${filePath}`, { cause: error });
     }
   } catch (error) {
     if (error.code !== 'ENOENT') {
@@ -123,29 +142,17 @@ async function loadOrCreateState(context) {
     initiativeState = createInitialState(context);
   }
 
-  const { state: migratedInitiativeState, migrated } = migrateState(initiativeState, context, filePath);
-  initiativeState = migratedInitiativeState;
-
-  let state = Object.hasOwn(initiativeState.nodes, context.nodeId)
-    ? initiativeState.nodes[context.nodeId]
-    : undefined;
+  validateState(initiativeState, context, filePath);
+  let state = findNode(initiativeState, context.nodeId);
   if (!state) {
     state = createInitialNodeState(context);
-    initiativeState.nodes[context.nodeId] = state;
+    initiativeState.nodes.push(state);
     initiativeState.updatedAt = state.updatedAt;
     await saveState(filePath, initiativeState);
     return { initiativeState, state };
   }
   if (state.tema !== context.tema) {
     throw new WorkflowError('PREREQ_NOT_MET', `Tema "${context.tema}" collides with existing tema "${state.tema}" after normalization`);
-  }
-
-  let stepsMigrated = false;
-  for (const { id } of WORKFLOW_STEPS) {
-    if (!Object.hasOwn(state.steps, id)) {
-      state.steps[id] = { status: StepStatus.PENDING, artifacts: {} };
-      stepsMigrated = true;
-    }
   }
 
   let changed = false;
@@ -155,9 +162,9 @@ async function loadOrCreateState(context) {
     const currentFingerprint = await computeInputFingerprint(context.workspaceRoot, context.inputFiles);
     if (state.inputFingerprint && state.inputFingerprint !== currentFingerprint) {
       for (const step of WORKFLOW_STEPS) {
-        const current = state.steps[step.id];
+        const current = findStep(state, step.id);
         if (current?.status === StepStatus.COMPLETED && !step.accumulative && step.kind !== 'approval') {
-          state.steps[step.id] = { status: StepStatus.PENDING, artifacts: {} };
+          resetStep(current, step);
           changed = true;
         }
       }
@@ -169,12 +176,12 @@ async function loadOrCreateState(context) {
   }
 
   for (const step of WORKFLOW_STEPS) {
-    const current = state.steps[step.id];
+    const current = findStep(state, step.id);
     if (!current || (current.status !== StepStatus.COMPLETED && current.status !== StepStatus.ACCUMULATING) || step.kind === 'approval') {
       continue;
     }
     try {
-      await verifyStoredArtifacts(context, step, current.artifacts, state.legacyOutputPaths);
+      await verifyStoredArtifacts(context, step, current.artifacts);
     } catch (error) {
       if (!(error instanceof ArtifactValidationError)) {
         throw error;
@@ -187,11 +194,11 @@ async function loadOrCreateState(context) {
   }
 
   const gate = WORKFLOW_STEPS.find(({ kind }) => kind === 'approval');
-  const gateState = state.steps[gate.id];
+  const gateState = findStep(state, gate.id);
   if (gateState?.status === StepStatus.COMPLETED) {
     for (const dependencyId of gate.requires) {
-      const currentArtifacts = state.steps[dependencyId]?.artifacts;
-      const approvedArtifacts = gateState.approvedArtifacts?.[dependencyId];
+      const currentArtifacts = findStep(state, dependencyId)?.artifacts;
+      const approvedArtifacts = gateState.approvedArtifacts?.find(({ stepType }) => stepType === dependencyId)?.artifacts;
       if (!sameArtifactReferences(currentArtifacts, approvedArtifacts)) {
         invalidateFromStep(
           state,
@@ -204,15 +211,136 @@ async function loadOrCreateState(context) {
       }
     }
   }
-  if (changed || migrated || stepsMigrated) {
-    initiativeState.nodes[context.nodeId] = state;
+  if (changed) {
     initiativeState.updatedAt = state.updatedAt;
     await saveState(filePath, initiativeState);
   }
   return { initiativeState, state };
 }
 
-class ArtifactValidationError extends Error {}
+function emptyStepState(step) {
+  return {
+    name: step.name ?? step.id,
+    type: step.id,
+    status: StepStatus.PENDING,
+    artifacts: [],
+    items: [],
+  };
+}
+
+function isRecord(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function validateArtifactList(artifacts, label) {
+  if (!Array.isArray(artifacts)) throw new WorkflowError('INVALID_RUN_STATE', `${label} must be an array`);
+  const identities = new Set();
+  for (const artifact of artifacts) {
+    if (!isRecord(artifact) || typeof artifact.name !== 'string' || !artifact.name ||
+        typeof artifact.path !== 'string' || !artifact.path ||
+        (artifact.groupId !== undefined && (typeof artifact.groupId !== 'string' || !artifact.groupId))) {
+      throw new WorkflowError('INVALID_RUN_STATE', `${label} contains an invalid artifact reference`);
+    }
+    const identity = `${artifact.groupId ?? ''}\0${artifact.name}`;
+    if (identities.has(identity)) throw new WorkflowError('INVALID_RUN_STATE', `${label} contains duplicate artifact names`);
+    identities.add(identity);
+  }
+}
+
+function validateState(state, context, filePath) {
+  const invalid = (detail) => {
+    throw new WorkflowError('INVALID_RUN_STATE', `Invalid schema 1 workflow state (${detail}): ${filePath}`);
+  };
+  if (!isRecord(state) || state.schemaVersion !== 1 || state.workflowId !== 'project-lifecycle' ||
+      state.runId !== context.runId || typeof state.createdAt !== 'string' ||
+      typeof state.updatedAt !== 'string' || !Array.isArray(state.nodes) || !Array.isArray(state.sources)) {
+    invalid('root fields');
+  }
+  const nodeIds = new Set();
+  for (const node of state.nodes) {
+    if (!isRecord(node) || typeof node.id !== 'string' || !node.id ||
+        typeof node.tema !== 'string' || !node.tema || typeof node.createdAt !== 'string' ||
+        typeof node.updatedAt !== 'string' || !Array.isArray(node.steps) ||
+        nodeIds.has(node.id) || !Array.isArray(node.steps)) invalid('node fields');
+    nodeIds.add(node.id);
+    if (node.steps.length !== WORKFLOW_STEPS.length) invalid(`steps for ${node.id}`);
+    const stepTypes = new Set();
+    for (const [index, step] of node.steps.entries()) {
+      if (!isRecord(step) || typeof step.type !== 'string' || stepTypes.has(step.type) ||
+          step.type !== WORKFLOW_STEPS[index]?.id || typeof step.name !== 'string' ||
+          !STEP_STATUSES.has(step.status) || !Array.isArray(step.items)) invalid(`step fields for ${node.id}`);
+      stepTypes.add(step.type);
+      validateArtifactList(step.artifacts, `artifacts for ${step.type}`);
+      const definition = WORKFLOW_STEPS[index];
+      const artifactGroups = definition.accumulative
+        ? groupArtifactReferences(step.artifacts)
+        : [Object.fromEntries(step.artifacts.map((artifact) => [artifact.name, artifact]))];
+      const expectedOutputs = [...definition.outputs].sort();
+      const hasCompleteOutputs = artifactGroups.length > 0 && artifactGroups.every((group) =>
+        JSON.stringify(Object.keys(group).sort()) === JSON.stringify(expectedOutputs));
+      if (step.status === StepStatus.COMPLETED && definition.kind !== 'approval' &&
+          (step.artifacts.some(({ groupId }) => groupId !== undefined) || !hasCompleteOutputs)) {
+        invalid(`completed outputs for ${step.type}`);
+      }
+      if (step.status === StepStatus.ACCUMULATING &&
+          (!definition.accumulative || !step.artifacts.length || !hasCompleteOutputs)) {
+        invalid(`accumulated outputs for ${step.type}`);
+      }
+      const itemIds = new Set();
+      for (const item of step.items) {
+        if (!isRecord(item) || typeof item.id !== 'string' || !item.id ||
+            typeof item.label !== 'string' || !STEP_STATUSES.has(item.status) ||
+            itemIds.has(item.id)) invalid(`items for ${step.type}`);
+        itemIds.add(item.id);
+        validateArtifactList(item.artifacts, `item artifacts for ${step.type}`);
+      }
+      if (step.approvedArtifacts !== undefined) {
+        if (!Array.isArray(step.approvedArtifacts)) invalid(`approvedArtifacts for ${step.type}`);
+        const approvedTypes = new Set();
+        for (const approval of step.approvedArtifacts) {
+          if (!isRecord(approval) || typeof approval.stepType !== 'string' ||
+              !WORKFLOW_STEPS.some(({ id }) => id === approval.stepType) ||
+              approvedTypes.has(approval.stepType)) invalid(`approval snapshot for ${step.type}`);
+          approvedTypes.add(approval.stepType);
+          validateArtifactList(approval.artifacts, `approval artifacts for ${step.type}`);
+        }
+      }
+      if (step.type === 'validation-gate' && step.status === StepStatus.COMPLETED &&
+          (!Array.isArray(step.approvedArtifacts) || typeof step.approvedAt !== 'string' ||
+           !/^[a-f0-9]{64}$/.test(step.approvalFingerprint ?? ''))) invalid('completed approval gate');
+      if (step.status === StepStatus.RUNNING &&
+          (!Number.isSafeInteger(step.executionPid) || typeof step.executionToken !== 'string' || !step.executionToken)) {
+        invalid(`running step metadata for ${step.type}`);
+      }
+    }
+    if (stepTypes.size !== WORKFLOW_STEPS.length) invalid(`missing steps for ${node.id}`);
+  }
+  const sourceIds = new Set();
+  const sourcePaths = new Set();
+  for (const source of state.sources) {
+    if (!isRecord(source) || typeof source.id !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(source.id) ||
+        typeof source.path !== 'string' || !source.path || !SOURCE_KINDS.includes(source.kind) ||
+        !SOURCE_ROLES.includes(source.role) || sourceIds.has(source.id) || sourcePaths.has(source.path)) {
+      invalid('sources');
+    }
+    if (isAbsolute(source.path) || source.path.includes('\\') ||
+        source.path.split('/').some((part) => !part || part === '.' || part === '..')) invalid('source path');
+    for (const field of ['stack', 'scope', 'description']) {
+      if (source[field] !== undefined && (typeof source[field] !== 'string' || !source[field].trim())) invalid('source metadata');
+    }
+    if (source.scope !== undefined && (isAbsolute(source.scope) || source.scope.includes('\\') ||
+        source.scope.split('/').some((part) => !part || part === '.' || part === '..'))) invalid('source scope');
+    sourceIds.add(source.id);
+    sourcePaths.add(source.path);
+  }
+}
+
+class ArtifactValidationError extends WorkflowError {
+  constructor(message, options) {
+    super('ARTIFACT_NOT_FOUND', message, options);
+    this.name = 'ArtifactValidationError';
+  }
+}
 
 export async function createArtifactReference(workspaceRoot, artifactRelativePath) {
   if (
@@ -236,7 +364,6 @@ export async function createArtifactReference(workspaceRoot, artifactRelativePat
 
   let realRoot;
   let realArtifact;
-  let content;
   try {
     [realRoot, realArtifact] = await Promise.all([realpath(root), realpath(artifactPath)]);
     const realRelativePath = relative(realRoot, realArtifact);
@@ -248,7 +375,7 @@ export async function createArtifactReference(workspaceRoot, artifactRelativePat
     ) {
       throw new ArtifactValidationError('Artifact resolves outside the workspace');
     }
-    content = await readFile(realArtifact);
+    await readFile(realArtifact);
   } catch (error) {
     if (error instanceof ArtifactValidationError) {
       throw error;
@@ -269,8 +396,6 @@ async function verifyArtifact(workspaceRoot, reference) {
   }
   return await createArtifactReference(workspaceRoot, reference.path);
 }
-
-const KNOWLEDGE_CATEGORIES = ['legado', 'refatorado', 'dominios'];
 
 function outputDirectory(context, step) {
   return step.outputDirectory?.replace('<iniciativa>', context.initiative);
@@ -365,72 +490,41 @@ async function checkOutputDirectory(root, directory, create = false) {
   }
 }
 
-async function assertLegacyOutputLocation(context, step, path) {
-  const isKnowledge = step.id === 'as-is-knowledge';
-  const prefix = isKnowledge
-    ? 'workspace/.knowledge/'
-    : `workspace/.discovery/${context.legacyTopic}/results/`;
-  const tail = typeof path === 'string' && path.startsWith(prefix) ? path.slice(prefix.length) : '';
-  const parts = tail.split('/');
-  const safe = parts.every((segment) => segment && segment !== '.' && segment !== '..' && !/[\\:]/.test(segment));
-  const scope = isKnowledge
-    ? parts.length >= 3 && KNOWLEDGE_CATEGORIES.includes(parts[0]) && parts[1] === context.legacyTopic
-    : parts.length >= 1;
-  if (!safe || !scope || !parts.at(-1).endsWith('.md')) {
-    throw new ArtifactValidationError(`Stored legacy output for "${step.id}" is outside its original directory`);
-  }
-  await checkOutputDirectory(context.workspaceRoot, dirname(path).split(sep).join('/'));
-  const info = await lstat(resolve(context.workspaceRoot, path)).catch((error) => {
-    if (error.code !== 'ENOENT') throw error;
-  });
-  if (!info?.isFile()) throw new ArtifactValidationError(`Stored legacy output is not a regular file: ${path}`);
-}
-
-async function verifyStoredArtifacts(context, step, artifacts, allowLegacyOutputPaths = false) {
-  if (step.accumulative && Array.isArray(artifacts)) {
-    for (const artifactGroup of artifacts) {
-      const expected = [...step.outputs].sort();
-      const actual = Object.keys(artifactGroup ?? {}).sort();
-      if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-        throw new ArtifactValidationError(`Stored outputs for "${step.id}" are incomplete`);
-      }
-      for (const name of expected) {
-        try {
-          await assertOutputLocation(context, step, artifactGroup[name]?.path);
-        } catch (error) {
-          if (!allowLegacyOutputPaths || !(error instanceof ArtifactValidationError)) throw error;
-          await assertLegacyOutputLocation(context, step, artifactGroup[name]?.path);
-        }
-        await verifyArtifact(context.workspaceRoot, artifactGroup[name]);
-      }
-    }
-  } else {
+async function verifyStoredArtifacts(context, step, artifacts) {
+  const groups = step.accumulative
+    ? [...new Set(artifacts.map(({ groupId }) => groupId))]
+    : [undefined];
+  for (const groupId of groups) {
+    const group = artifacts.filter((artifact) => artifact.groupId === groupId);
+    const actual = group.map(({ name }) => name).sort();
     const expected = [...step.outputs].sort();
-    const actual = Object.keys(artifacts ?? {}).sort();
     if (JSON.stringify(actual) !== JSON.stringify(expected)) {
       throw new ArtifactValidationError(`Stored outputs for "${step.id}" are incomplete`);
     }
-    for (const name of expected) {
-      try {
-        await assertOutputLocation(context, step, artifacts[name]?.path);
-      } catch (error) {
-        if (!allowLegacyOutputPaths || !(error instanceof ArtifactValidationError)) throw error;
-        await assertLegacyOutputLocation(context, step, artifacts[name]?.path);
-      }
-      await verifyArtifact(context.workspaceRoot, artifacts[name]);
+    for (const artifact of group) {
+      await assertOutputLocation(context, step, artifact.path);
+      await verifyArtifact(context.workspaceRoot, artifact);
     }
   }
 }
 
 async function saveCurrentState(context, record) {
-  record.initiativeState.nodes[context.nodeId] = record.state;
+  const nodeIndex = record.initiativeState.nodes.findIndex(({ id }) => id === context.nodeId);
+  if (nodeIndex < 0) record.initiativeState.nodes.push(record.state);
+  else record.initiativeState.nodes[nodeIndex] = record.state;
   record.initiativeState.updatedAt = record.state.updatedAt;
   await saveState(statePath(context), record.initiativeState);
 }
 
 function computeApprovalFingerprint(state, gate) {
   const data = gate.requires
-    .map((depId) => JSON.stringify({ depId, artifacts: state.steps[depId]?.artifacts ?? {} }))
+    .map((depId) => {
+      const artifacts = findStep(state, depId)?.artifacts ?? [];
+      const references = [...artifacts]
+        .map(({ name, path, groupId }) => ({ name, path, ...(groupId ? { groupId } : {}) }))
+        .sort((left, right) => `${left.name}\0${left.path}\0${left.groupId ?? ''}`.localeCompare(`${right.name}\0${right.path}\0${right.groupId ?? ''}`));
+      return JSON.stringify({ stepType: depId, artifacts: references });
+    })
     .join('\n');
   return createHash('sha256').update(data).digest('hex');
 }
@@ -449,39 +543,12 @@ async function computeInputFingerprint(workspaceRoot, inputFiles) {
   return createHash('sha256').update(parts.join('\n')).digest('hex');
 }
 
-function extractArtifactPaths(artifacts) {
-  if (!artifacts || typeof artifacts !== 'object') return [];
-  if (typeof artifacts.path === 'string') {
-    return [artifacts.path];
-  }
-  const paths = [];
-  for (const value of Object.values(artifacts)) {
-    if (typeof value === 'string') {
-      paths.push(value);
-    } else if (typeof value?.path === 'string') {
-      paths.push(value.path);
-    } else if (value && typeof value === 'object') {
-      paths.push(...extractArtifactPaths(value));
-    }
-  }
-  return paths.sort();
-}
-
 function sameArtifactReferences(current, approved) {
-  if (!current || !approved) {
-    return false;
-  }
-  if (Array.isArray(current) && Array.isArray(approved)) {
-    if (current.length !== approved.length) return false;
-    return current.every((curr, idx) => {
-      const app = approved[idx];
-      return JSON.stringify(extractArtifactPaths(curr)) === JSON.stringify(extractArtifactPaths(app));
-    });
-  }
-  if (Array.isArray(current) || Array.isArray(approved)) {
-    return false;
-  }
-  return JSON.stringify(extractArtifactPaths(current)) === JSON.stringify(extractArtifactPaths(approved));
+  if (!Array.isArray(current) || !Array.isArray(approved)) return false;
+  const normalize = (artifacts) => artifacts
+    .map(({ name, path, groupId }) => ({ name, path, ...(groupId ? { groupId } : {}) }))
+    .sort((left, right) => `${left.name}\0${left.path}\0${left.groupId ?? ''}`.localeCompare(`${right.name}\0${right.path}\0${right.groupId ?? ''}`));
+  return JSON.stringify(normalize(current)) === JSON.stringify(normalize(approved));
 }
 
 function invalidateFromStep(state, stepId, reason) {
@@ -498,66 +565,60 @@ function invalidateFromStep(state, stepId, reason) {
   }
 
   for (const id of affected) {
-    const reset = {
-      status: id === stepId ? StepStatus.FAILED : StepStatus.PENDING,
-      artifacts: {},
-    };
-    if (id === stepId) {
-      reset.error = reason;
-    }
-    state.steps[id] = reset;
+    const definition = WORKFLOW_STEPS.find(({ id: candidate }) => candidate === id);
+    resetStep(findStep(state, id), definition, id === stepId ? StepStatus.FAILED : StepStatus.PENDING, id === stepId ? reason : undefined);
   }
+}
+
+function groupArtifactReferences(artifacts) {
+  const grouped = new Map();
+  for (const artifact of artifacts) {
+    const key = artifact.groupId ?? '';
+    if (!grouped.has(key)) grouped.set(key, {});
+    grouped.get(key)[artifact.name] = artifact;
+  }
+  return [...grouped.values()];
 }
 
 async function validatedPrerequisites(workspaceRoot, state, step) {
   const prerequisites = {};
   for (const dependencyId of step.requires) {
-    const dependency = state.steps[dependencyId];
+    const dependency = findStep(state, dependencyId);
     if (!dependency || (dependency.status !== StepStatus.COMPLETED && dependency.status !== StepStatus.ACCUMULATING)) {
       throw new WorkflowError('PREREQ_NOT_MET', `Workflow blocked: prerequisite "${dependencyId}" is incomplete`);
     }
 
-    const validatedArtifacts = {};
     if (dependencyId === 'validation-gate') {
-      for (const [approvedStepId, artifacts] of Object.entries(dependency.approvedArtifacts ?? {})) {
-        validatedArtifacts[approvedStepId] = {};
-        if (Array.isArray(artifacts)) {
-          validatedArtifacts[approvedStepId] = [];
-          for (const artifactGroup of artifacts) {
-            const validated = {};
-            for (const [name, reference] of Object.entries(artifactGroup)) {
-              validated[name] = await verifyArtifact(workspaceRoot, reference);
-            }
-            validatedArtifacts[approvedStepId].push(validated);
+      const validatedArtifacts = {};
+      for (const approval of dependency.approvedArtifacts ?? []) {
+        const groups = groupArtifactReferences(approval.artifacts);
+        const verifiedGroups = [];
+        for (const group of groups) {
+          const verified = {};
+          for (const [name, reference] of Object.entries(group)) {
+            verified[name] = await verifyArtifact(workspaceRoot, reference);
           }
-        } else if (typeof artifacts?.path === 'string') {
-          const verified = await verifyArtifact(workspaceRoot, artifacts);
-          validatedArtifacts[approvedStepId] = {
-            path: verified.path,
-            [approvedStepId]: verified,
-          };
-        } else {
-          for (const [name, reference] of Object.entries(artifacts)) {
-            const verified = typeof reference === 'string'
-              ? await verifyArtifact(workspaceRoot, { path: reference })
-              : await verifyArtifact(workspaceRoot, reference);
-            validatedArtifacts[approvedStepId][name] = verified;
-          }
-          if (typeof validatedArtifacts[approvedStepId][approvedStepId]?.path === 'string') {
-            validatedArtifacts[approvedStepId].path = validatedArtifacts[approvedStepId][approvedStepId].path;
-          }
+          verifiedGroups.push(verified);
         }
+        validatedArtifacts[approval.stepType] = verifiedGroups.length > 1
+          ? verifiedGroups
+          : verifiedGroups[0] ?? {};
       }
+      prerequisites[dependencyId] = validatedArtifacts;
     } else {
-      for (const [name, reference] of Object.entries(dependency.artifacts)) {
-        if (typeof reference === 'string') {
-          validatedArtifacts[name] = await verifyArtifact(workspaceRoot, { path: reference });
-        } else {
-          validatedArtifacts[name] = await verifyArtifact(workspaceRoot, reference);
+      const groups = groupArtifactReferences(dependency.artifacts);
+      const verifiedGroups = [];
+      for (const group of groups) {
+        const verified = {};
+        for (const [name, reference] of Object.entries(group)) {
+          verified[name] = await verifyArtifact(workspaceRoot, reference);
         }
+        verifiedGroups.push(verified);
       }
+      prerequisites[dependencyId] = verifiedGroups.length > 1
+        ? verifiedGroups
+        : verifiedGroups[0] ?? {};
     }
-    prerequisites[dependencyId] = validatedArtifacts;
   }
   return prerequisites;
 }
@@ -591,13 +652,163 @@ export async function readWorkflowRun(context) {
   return withRunLock(resolvedContext, async () => (await loadOrCreateState(resolvedContext)).state);
 }
 
+function assertSourceRunContext({ workspaceRoot, runId }) {
+  if (typeof workspaceRoot !== 'string' || !workspaceRoot ||
+      typeof runId !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(runId)) {
+    throw new WorkflowError('INVALID_SOURCE', 'workspaceRoot and a valid runId are required');
+  }
+  return { workspaceRoot: resolve(workspaceRoot), runId };
+}
+
+async function loadOrCreateRootState(context) {
+  const filePath = statePath(context);
+  let state;
+  try {
+    state = JSON.parse(await readFile(filePath, 'utf8'));
+  } catch (error) {
+    if (error.code === 'ENOENT') state = createInitialState(context);
+    else if (error instanceof SyntaxError) {
+      throw new WorkflowError('INVALID_RUN_STATE', `Workflow state is not valid JSON: ${filePath}`, { cause: error });
+    } else throw error;
+  }
+  validateState(state, context, filePath);
+  return state;
+}
+
+async function validateSourcePath(workspaceRoot, source) {
+  if (typeof source.path !== 'string' || !source.path || isAbsolute(source.path) ||
+      source.path.includes('\\') || source.path.split('/').some((part) => !part || part === '.' || part === '..')) {
+    throw new WorkflowError('INVALID_SOURCE', 'Source path must be a clean workspace-relative path');
+  }
+  const root = resolve(workspaceRoot);
+  const target = resolve(root, source.path);
+  const lexicalRelative = relative(root, target);
+  if (!lexicalRelative || lexicalRelative === '..' || lexicalRelative.startsWith(`..${sep}`) || isAbsolute(lexicalRelative)) {
+    throw new WorkflowError('INVALID_SOURCE', `Source path must stay inside the workspace: ${source.path}`);
+  }
+  let realRoot;
+  let realTarget;
+  try {
+    [realRoot, realTarget] = await Promise.all([realpath(root), realpath(target)]);
+  } catch (error) {
+    throw new WorkflowError('INVALID_SOURCE', `Source path does not exist: ${source.path}`, { cause: error });
+  }
+  const actualRelative = relative(realRoot, realTarget);
+  if (!actualRelative || actualRelative === '..' || actualRelative.startsWith(`..${sep}`) || isAbsolute(actualRelative)) {
+    throw new WorkflowError('INVALID_SOURCE', `Source resolves outside the workspace: ${source.path}`);
+  }
+  const info = await stat(realTarget);
+  if ((source.kind === 'repository' && !info.isDirectory()) || (source.kind === 'document' && !info.isFile())) {
+    throw new WorkflowError('INVALID_SOURCE', `Source kind "${source.kind}" does not match path: ${source.path}`);
+  }
+  if (source.scope !== undefined) {
+    if (typeof source.scope !== 'string' || !source.scope || isAbsolute(source.scope) ||
+        source.scope.includes('\\') || source.scope.split('/').some((part) => !part || part === '.' || part === '..')) {
+      throw new WorkflowError('INVALID_SOURCE', 'Source scope must be a clean path relative to the source');
+    }
+    let realScope;
+    try {
+      realScope = await realpath(resolve(realTarget, source.scope));
+    } catch (error) {
+      throw new WorkflowError('INVALID_SOURCE', `Source scope does not exist: ${source.scope}`, { cause: error });
+    }
+    const scopeRelative = relative(realTarget, realScope);
+    if (!scopeRelative || scopeRelative === '..' || scopeRelative.startsWith(`..${sep}`) || isAbsolute(scopeRelative)) {
+      throw new WorkflowError('INVALID_SOURCE', `Source scope resolves outside its source: ${source.scope}`);
+    }
+  }
+}
+
+async function normalizeSource(workspaceRoot, source) {
+  if (!isRecord(source) || typeof source.id !== 'string' ||
+      !/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(source.id) ||
+      !SOURCE_KINDS.includes(source.kind) || !SOURCE_ROLES.includes(source.role)) {
+    throw new WorkflowError('INVALID_SOURCE', 'Source requires a valid id, kind, and role');
+  }
+  const allowedFields = new Set(['id', 'path', 'kind', 'role', 'stack', 'scope', 'description']);
+  if (Object.keys(source).some((field) => !allowedFields.has(field))) {
+    throw new WorkflowError('INVALID_SOURCE', 'Source contains an unsupported field');
+  }
+  for (const field of ['stack', 'scope', 'description']) {
+    if (source[field] !== undefined && (typeof source[field] !== 'string' || !source[field].trim())) {
+      throw new WorkflowError('INVALID_SOURCE', `${field} must be a non-empty string when provided`);
+    }
+  }
+  const normalized = {
+    id: source.id,
+    path: source.path,
+    kind: source.kind,
+    role: source.role,
+    ...(source.stack ? { stack: source.stack.trim() } : {}),
+    ...(source.scope ? { scope: source.scope } : {}),
+    ...(source.description ? { description: source.description.trim() } : {}),
+  };
+  await validateSourcePath(workspaceRoot, normalized);
+  return normalized;
+}
+
+function assertUniqueSource(sources, candidate, ignoredId) {
+  if (sources.some(({ id }) => id === candidate.id && id !== ignoredId)) {
+    throw new WorkflowError('INVALID_SOURCE', `Source id already exists: ${candidate.id}`);
+  }
+  if (sources.some((source) => source.path === candidate.path && source.id !== ignoredId)) {
+    throw new WorkflowError('INVALID_SOURCE', `Source path already exists: ${candidate.path}`);
+  }
+}
+
+export async function addSource(options) {
+  const context = assertSourceRunContext(options);
+  return withRunLock(context, async () => {
+    const state = await loadOrCreateRootState(context);
+    const source = await normalizeSource(context.workspaceRoot, options.source);
+    assertUniqueSource(state.sources, source);
+    state.sources.push(source);
+    state.updatedAt = new Date().toISOString();
+    await saveState(statePath(context), state);
+    return source;
+  });
+}
+
+export async function updateSource(options) {
+  const context = assertSourceRunContext(options);
+  return withRunLock(context, async () => {
+    const state = await loadOrCreateRootState(context);
+    const index = state.sources.findIndex(({ id }) => id === options.source?.id);
+    if (index < 0) throw new WorkflowError('INVALID_SOURCE', `Source not found: ${options.source?.id}`);
+    const source = await normalizeSource(context.workspaceRoot, { ...state.sources[index], ...options.source });
+    assertUniqueSource(state.sources, source, source.id);
+    state.sources[index] = source;
+    state.updatedAt = new Date().toISOString();
+    await saveState(statePath(context), state);
+    return source;
+  });
+}
+
+export async function removeSource(options) {
+  const context = assertSourceRunContext(options);
+  return withRunLock(context, async () => {
+    const state = await loadOrCreateRootState(context);
+    const index = state.sources.findIndex(({ id }) => id === options.sourceId);
+    if (index < 0) throw new WorkflowError('INVALID_SOURCE', `Source not found: ${options.sourceId}`);
+    const [removed] = state.sources.splice(index, 1);
+    state.updatedAt = new Date().toISOString();
+    await saveState(statePath(context), state);
+    return removed;
+  });
+}
+
+export async function listSources(options) {
+  const context = assertSourceRunContext(options);
+  return withRunLock(context, async () => (await loadOrCreateRootState(context)).sources);
+}
+
 export async function getReadyStepDetails(context) {
   const resolvedContext = await resolveRunContext(context);
   return withRunLock(resolvedContext, async () => {
     const record = await loadOrCreateState(resolvedContext);
     const { state } = record;
     let reconciled = false;
-    for (const current of Object.values(state.steps)) {
+    for (const current of state.steps) {
       if (current.status === StepStatus.RUNNING && !(await processIsAlive(current.executionPid))) {
         current.status = StepStatus.FAILED;
         current.error = 'Previous stage execution was interrupted and can be retried';
@@ -613,7 +824,7 @@ export async function getReadyStepDetails(context) {
 
     const ready = [];
     for (const step of WORKFLOW_STEPS) {
-      const current = state.steps[step.id];
+      const current = findStep(state, step.id);
       if (current.status !== StepStatus.PENDING && current.status !== StepStatus.FAILED
           && !(step.accumulative && current.status === StepStatus.ACCUMULATING)) {
         continue;
@@ -624,10 +835,12 @@ export async function getReadyStepDetails(context) {
           state,
           step,
         );
+        const selected = await selectedSources(resolvedContext.workspaceRoot, record.initiativeState, step);
         const detail = {
           id: step.id,
           kind: step.kind ?? 'work',
-          inputs: step.inputs,
+          inputs: [...resolvedContext.inputFiles, ...step.inputs, ...selected.map(({ scopedPath }) => scopedPath)],
+          sources: selected,
           outputs: step.outputs,
           outputDirectory: outputDirectory(resolvedContext, step),
           templates: step.templates,
@@ -650,6 +863,15 @@ export async function getReadySteps(context) {
   return (await getReadyStepDetails(context)).map(({ id }) => id);
 }
 
+async function selectedSources(workspaceRoot, state, step) {
+  const selected = state.sources.filter(({ role }) => step.sourceRoles?.includes(role));
+  for (const source of selected) await validateSourcePath(workspaceRoot, source);
+  return selected.map((source) => ({
+    ...source,
+    scopedPath: source.scope ? `${source.path}/${source.scope}` : source.path,
+  }));
+}
+
 export async function registerWorkflowOutputs({ stepId, paths, ...rawContext }) {
   const context = await resolveRunContext(rawContext);
   const step = WORKFLOW_STEPS.find(({ id }) => id === stepId);
@@ -664,7 +886,14 @@ export async function registerWorkflowOutputs({ stepId, paths, ...rawContext }) 
     const record = await loadOrCreateState(context);
     const { state } = record;
     const completedAt = new Date().toISOString();
-    state.steps[stepId] = { status: StepStatus.COMPLETED, artifacts, completedAt };
+    const current = findStep(state, stepId);
+    const groupId = randomUUID();
+    const registered = Object.entries(artifacts)
+      .map(([name, reference]) => ({ name, ...reference, ...(step.accumulative ? { groupId } : {}) }));
+    current.status = step.accumulative ? StepStatus.ACCUMULATING : StepStatus.COMPLETED;
+    current.artifacts = step.accumulative ? [...current.artifacts, ...registered] : registered;
+    if (!step.accumulative) current.items = [];
+    current.completedAt = completedAt;
     state.updatedAt = completedAt;
     await saveCurrentState(context, record);
     return state;
@@ -767,7 +996,7 @@ export async function runWorkflowStep(options) {
   const { stepId, execute, ...rawContext } = options;
   const context = await resolveRunContext(rawContext);
   if (typeof execute !== 'function') {
-    throw new TypeError('execute must be a function');
+    throw new WorkflowError('INVALID_EXECUTOR', 'execute must be a function');
   }
 
   const step = WORKFLOW_STEPS.find((candidate) => candidate.id === stepId);
@@ -782,7 +1011,7 @@ export async function runWorkflowStep(options) {
   const preparation = await withRunLock(context, async () => {
     const record = await loadOrCreateState(context);
     const { state } = record;
-    let current = state.steps[stepId];
+    let current = findStep(state, stepId);
     if (current.status === StepStatus.COMPLETED || current.status === StepStatus.ACCUMULATING) {
       if (step.accumulative) {
         // Accumulative steps always allow re-execution; downstream is not invalidated
@@ -794,6 +1023,7 @@ export async function runWorkflowStep(options) {
       throw new WorkflowError('STEP_LOCKED', `Workflow step "${stepId}" is already running`);
     }
     const prerequisites = await validatedPrerequisites(context.workspaceRoot, state, step);
+    const sources = await selectedSources(context.workspaceRoot, record.initiativeState, step);
     const executionToken = randomUUID();
     current.status = StepStatus.RUNNING;
     current.error = undefined;
@@ -801,7 +1031,7 @@ export async function runWorkflowStep(options) {
     current.executionToken = executionToken;
     state.updatedAt = new Date().toISOString();
     await saveCurrentState(context, record);
-    return { state, prerequisites, executionToken, completed: false };
+    return { state, record, prerequisites, sources, executionToken, completed: false };
   });
   if (preparation.completed) {
     return preparation.state;
@@ -812,17 +1042,22 @@ export async function runWorkflowStep(options) {
       step,
       workspaceRoot: resolve(context.workspaceRoot),
       inputFiles: [...context.inputFiles],
+      sources: preparation.sources,
       prerequisites: preparation.prerequisites,
     });
     const artifacts = await validateOutputs(context, step, result);
     return await withRunLock(context, async () => {
       const record = await loadOrCreateState(context);
       const { state } = record;
-      const current = state.steps[stepId];
+      const current = findStep(state, stepId);
       if (current.executionToken !== preparation.executionToken) {
         throw new WorkflowError('STEP_LOCKED', `Workflow step "${stepId}" was invalidated before its output was saved`);
       }
-      current.artifacts = artifacts;
+      const groupId = randomUUID();
+      const newArtifacts = Object.entries(artifacts)
+        .map(([name, reference]) => ({ name, ...reference, ...(step.accumulative ? { groupId } : {}) }));
+      current.artifacts = step.accumulative ? [...current.artifacts, ...newArtifacts] : newArtifacts;
+      current.items = [];
       current.status = step.accumulative ? StepStatus.ACCUMULATING : StepStatus.COMPLETED;
       current.completedAt = new Date().toISOString();
       delete current.error;
@@ -836,11 +1071,11 @@ export async function runWorkflowStep(options) {
     await withRunLock(context, async () => {
       const record = await loadOrCreateState(context);
       const { state } = record;
-      const current = state.steps[stepId];
+      const current = findStep(state, stepId);
       if (current.executionToken === preparation.executionToken) {
         current.status = StepStatus.FAILED;
         current.error = error instanceof Error ? error.message : String(error);
-        current.artifacts = {};
+        current.artifacts = [];
         delete current.executionPid;
         delete current.executionToken;
         state.updatedAt = new Date().toISOString();
@@ -870,30 +1105,19 @@ export async function approveValidationGate(options) {
 
     const validated = await validatedPrerequisites(context.workspaceRoot, state, gate);
 
-    const approvedArtifacts = {};
-    for (const [depId, artifacts] of Object.entries(validated)) {
-      if (artifacts && typeof artifacts === 'object' && !Array.isArray(artifacts)) {
-        if (typeof artifacts.path === 'string') {
-          approvedArtifacts[depId] = { path: artifacts.path };
-        } else if (artifacts[depId] && typeof artifacts[depId].path === 'string') {
-          approvedArtifacts[depId] = { path: artifacts[depId].path };
-        } else if (Object.keys(artifacts).length === 1 && typeof Object.values(artifacts)[0]?.path === 'string') {
-          approvedArtifacts[depId] = { path: Object.values(artifacts)[0].path };
-        } else {
-          approvedArtifacts[depId] = artifacts;
-        }
-      } else {
-        approvedArtifacts[depId] = artifacts;
-      }
-    }
+    const approvedArtifacts = gate.requires.map((stepType) => ({
+      stepType,
+      artifacts: findStep(state, stepType).artifacts.map((artifact) => ({ ...artifact })),
+    }));
 
     const approvedAt = new Date().toISOString();
-    state.steps[gate.id] = {
-      status: StepStatus.COMPLETED,
-      artifacts: {},
-      approvedArtifacts,
-      approvedAt,
-    };
+    const gateState = findStep(state, gate.id);
+    gateState.status = StepStatus.COMPLETED;
+    gateState.artifacts = [];
+    gateState.items = [];
+    gateState.approvedArtifacts = approvedArtifacts;
+    gateState.approvedAt = approvedAt;
+    gateState.approvalFingerprint = currentFingerprint;
     state.updatedAt = approvedAt;
     await saveCurrentState(context, record);
     return state;
