@@ -1,0 +1,12 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "smith",
+  "version": "0.0.1",
+  "description": "Workflow, templates and safe repository tools for Copilot projects.",
+  "author": {
+    "name": "Daniel",
+    "email": "mendonca.it@gmail.com"
+  },
+  "homepage": "https://github.com/dmends/smith",
+  "repository": "https://github.com/dmends/smith.git"
+}

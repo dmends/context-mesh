@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versão da release (ex: v0.0.1 ou 0.0.1)'
+        required: true
+        type: string
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            RAW="${{ inputs.version }}"
+          else
+            RAW="${{ github.ref_name }}"
+          fi
+          SEMVER="${RAW#v}"
+          TAG="v${SEMVER}"
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "semver=${SEMVER}" >> $GITHUB_OUTPUT
+
+      - name: Sync version to package.json and plugin.json
+        run: |
+          node -e '
+            import fs from "node:fs";
+            const ver = process.argv[1];
+            for (const file of ["package.json", "plugin.json"]) {
+              const json = JSON.parse(fs.readFileSync(file, "utf8"));
+              json.version = ver;
+              fs.writeFileSync(file, JSON.stringify(json, null, 2) + "\n");
+            }
+          ' "${{ steps.version.outputs.semver }}"
+
+      - name: Build package
+        run: node build.mjs
+
+      - name: Configure git identity for tests
+        run: |
+          git config --global user.email "ci@smith"
+          git config --global user.name "Smith CI"
+
+      - name: Run tests
+        run: node --test --test-reporter=spec 'tests/*.test.mjs' 'src/**/*.test.mjs' 2>&1
+
+      - name: Create zip
+        run: |
+          cd dist
+          zip -r ../smith-plugin-${{ steps.version.outputs.tag }}.zip smith-plugin/
+          cp ../smith-plugin-${{ steps.version.outputs.tag }}.zip ../smith-plugin-latest.zip
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          files: |
+            smith-plugin-${{ steps.version.outputs.tag }}.zip
+            smith-plugin-latest.zip
+          generate_release_notes: true
+          fail_on_unmatched_files: true

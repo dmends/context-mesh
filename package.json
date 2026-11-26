@@ -1,0 +1,27 @@
+{
+  "name": "smith",
+  "version": "0.0.1",
+  "description": "Workflow, templates and safe repository tools for GitHub Copilot projects.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test 'tests/*.test.mjs' 'src/**/*.test.mjs'",
+    "test:watch": "node --test --watch 'tests/*.test.mjs' 'src/**/*.test.mjs'"
+  },
+  "keywords": [
+    "copilot",
+    "workflow",
+    "templates",
+    "github",
+    "plugin"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dmends/smith.git"
+  }
+}
