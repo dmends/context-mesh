@@ -16,6 +16,7 @@ const folderInput = document.getElementById('folder');
 const chooseFolder = document.getElementById('choose-folder');
 const restoreFolder = document.getElementById('restore-folder');
 const refreshFolder = document.getElementById('refresh-folder');
+const themeToggle = document.getElementById('theme-toggle');
 const initiative = document.getElementById('initiative');
 const message = document.getElementById('message');
 const notice = document.getElementById('notice');
@@ -23,6 +24,7 @@ const content = document.getElementById('content');
 const details = document.getElementById('details');
 const overlay = document.getElementById('overlay');
 const lastInitiativeKey = 'smith-last-initiative';
+const themeStorageKey = 'smith-theme';
 let directory;
 let project;
 let projectFiles;
@@ -30,6 +32,54 @@ let files = [];
 let loadSequence = 0;
 let detailSequence = 0;
 let currentStateObj = null;
+const toastTimers = new WeakMap();
+
+function showToast(container, text) {
+  const toast = element('p', text, `msg ${container === message ? 'toast-error' : 'toast-notice'}`);
+  const timer = setTimeout(() => {
+    toast.remove();
+    toastTimers.delete(toast);
+  }, container === message ? 8000 : 5000);
+  toastTimers.set(toast, timer);
+  container.append(toast);
+}
+
+function clearToasts(container) {
+  for (const toast of [...container.children]) {
+    clearTimeout(toastTimers.get(toast));
+    toastTimers.delete(toast);
+    toast.remove();
+  }
+}
+
+function applyTheme(theme, persist = false) {
+  const normalized = theme === 'light' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', normalized);
+  const nextLabel = normalized === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro';
+  themeToggle.title = nextLabel;
+  themeToggle.setAttribute('aria-label', nextLabel);
+  if (persist) {
+    try {
+      localStorage.setItem(themeStorageKey, normalized);
+    } catch (error) {
+      showToast(notice, `Não foi possível salvar a preferência de tema: ${error.message}`);
+    }
+  }
+}
+
+if (themeToggle && document.documentElement) {
+  let savedTheme;
+  try {
+    savedTheme = localStorage.getItem(themeStorageKey);
+  } catch (error) {
+    showToast(notice, `Não foi possível recuperar a preferência de tema: ${error.message}`);
+  }
+  applyTheme(savedTheme === 'dark' ? 'dark' : 'light');
+  themeToggle.addEventListener('click', () => {
+    const currentTheme = document.documentElement.getAttribute('data-theme');
+    applyTheme(currentTheme === 'light' ? 'dark' : 'light', true);
+  });
+}
 
 function element(tag, text, className) {
   const result = document.createElement(tag);
@@ -107,9 +157,9 @@ function rankSteps() {
 }
 
 function diagram(node) {
-  const cardWidth = 148;
-  const cardHeight = 68;
-  const columnWidth = 182;
+  const cardWidth = 158;
+  const cardHeight = 76;
+  const columnWidth = 192;
   const rowHeight = cardHeight * 2;
   const ranks = rankSteps();
   const byRank = new Map();
@@ -121,9 +171,9 @@ function diagram(node) {
   const maxRank = Math.max(...ranks.values());
   const maxParallel = Math.max(...[...byRank.values()].map((group) => group.length), 2);
   const width = maxRank * columnWidth + cardWidth + 16;
-  const height = maxParallel * rowHeight + 60;
-  const centerY = (height - cardHeight) / 2;
-  const topY = Math.round((height - cardHeight - rowHeight) / 2);
+  const height = maxParallel * rowHeight + 68;
+  const centerY = (height - cardHeight) / 2 + 12;
+  const topY = Math.round((height - cardHeight - rowHeight) / 2) + 12;
   const positions = new Map();
   for (const step of steps) {
     const peers = byRank.get(ranks.get(step.id));
@@ -154,7 +204,7 @@ function diagram(node) {
     separator.setAttribute('y1', 0);
     separator.setAttribute('x2', separatorX);
     separator.setAttribute('y2', height);
-    separator.setAttribute('stroke', '#cbd5e1');
+    separator.setAttribute('stroke', 'var(--separator-stroke)');
     separator.setAttribute('stroke-width', '1.5');
     separator.setAttribute('stroke-dasharray', '5 4');
     connections.append(separator);
@@ -175,7 +225,7 @@ function diagram(node) {
       const endY = to.y + cardHeight / 2;
       const middleX = Math.round((startX + endX) / 2);
       const direction = endY >= startY ? 1 : -1;
-      const tip = endX - 6;
+      const tip = endX - 5;
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('data-dependency', `${dependency}:${step.id}`);
       const d = Math.abs(startY - endY) < 1
@@ -203,7 +253,6 @@ function diagram(node) {
     );
     const footer = element('div', '', 'step-footer');
     footer.append(statusBadge(state.status));
-    footer.append(element('span', 'Ver detalhes', 'step-hint'));
     card.append(heading, footer);
     card.addEventListener('click', () => showDetails(node, step));
     graph.append(card);
@@ -223,29 +272,75 @@ function sourceRoleLabel(role) {
 }
 
 function renderSourcesSection(state) {
-  const section = element('section', '', 'sources-section');
-  const header = element('div', '', 'sources-header');
-  header.append(element('h3', `Fontes de Código e Insumos (${state.sources.length})`));
+  const button = element('button', '', 'btn btn-secondary btn-icon sources-button');
+  button.type = 'button';
+  button.title = `Fontes de Código e Insumos (${state.sources.length})`;
+  button.setAttribute('aria-label', button.title);
+  button.append(svgIcon('M4 4h12v12H4z M7 7h6 M7 10h6 M7 13h3'));
+  button.addEventListener('click', () => showSources(state));
+  return button;
+}
+
+async function copyInitialProjectPrompt(projectName) {
+  if (typeof navigator === 'undefined' || !navigator.clipboard) {
+    showToast(message, 'A cópia do prompt não está disponível neste navegador.');
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(initialProjectPrompt.replaceAll('{{project-name}}', projectName));
+    showToast(notice, 'Prompt para iniciar o projeto copiado.');
+  } catch (error) {
+    showToast(message, `Não foi possível copiar: ${error.message}`);
+  }
+}
+
+function renderEmptyRuns(folderName) {
+  const section = element('section', '', 'empty-runs');
+  section.append(
+    element('h2', 'Nenhuma execução encontrada'),
+    element('p', `O projeto ${folderName} ainda não tem execuções. Use o prompt de início para definir a iniciativa e o primeiro tema com o Smith; não é necessário ter fontes antes de começar.`),
+  );
+  const copyPrompt = element('button', 'Copiar prompt para iniciar', 'btn btn-primary');
+  copyPrompt.type = 'button';
+  copyPrompt.addEventListener('click', () => copyInitialProjectPrompt(folderName));
+  section.append(copyPrompt);
+  content.append(section);
+}
+
+function showSources(state) {
+  detailSequence += 1;
+  details.textContent = '';
+  details.hidden = false;
+  overlay.hidden = false;
+  const topbar = element('div', '', 'details-topbar');
+  const actions = element('div', '', 'details-actions');
+  actions.append(closeButton());
+  topbar.append(element('h2', `Fontes de Código e Insumos (${state.sources.length})`), actions);
+  details.append(topbar);
+  overlay.addEventListener('click', closeDetails, { once: true });
+
+  const scroll = element('div', '', 'details-scroll');
   const addButton = element('button', '+ Adicionar Fonte', 'btn btn-secondary');
   addButton.type = 'button';
-  header.append(addButton);
-  section.append(header);
+  addButton.addEventListener('click', () => openSourceForm(scroll, state.runId));
+  scroll.append(addButton);
   const grid = element('div', '', 'sources-grid');
   for (const source of state.sources) {
     const card = element('article', '', 'source-card');
     const badge = element('span', sourceRoleLabel(source.role), `source-badge ${source.role}`);
-    const title = element('strong', source.id);
-    const kind = element('span', source.kind === 'repository' ? 'Repositório' : 'Documento', 'source-kind');
-    card.append(badge, title, element('code', source.path, 'source-path'), kind);
+    const title = element('span', source.id, 'source-title');
+    const kind = element('span', source.kind === 'repository' ? 'Repositório' : 'Documento', 'source-badge source-kind-badge');
+    if (source.role !== 'target') card.append(badge);
+    card.append(title, element('code', source.path, 'source-path'), kind);
     if (source.stack) card.append(element('span', source.stack, 'source-stack'));
     if (source.scope) card.append(element('span', `scope: ${source.scope}`, 'source-scope'));
     if (source.description) card.append(element('p', source.description, 'source-description'));
+    if (source.role === 'target') card.append(badge);
     grid.append(card);
   }
   if (!state.sources.length) grid.append(element('p', 'Nenhuma fonte registrada nesta iniciativa.', 'sources-empty'));
-  section.append(grid);
-  addButton.addEventListener('click', () => openSourceForm(section, state.runId));
-  return section;
+  scroll.append(grid);
+  details.append(scroll);
 }
 
 function openSourceForm(section, runId) {
@@ -320,47 +415,56 @@ async function copySourceText(output, field) {
   if (!output.dataset[field] || !navigator.clipboard) return;
   try {
     await navigator.clipboard.writeText(output.dataset[field]);
-    notice.textContent = field === 'json' ? 'JSON copiado.' : 'Instrução CLI copiada.';
+    showToast(notice, field === 'json' ? 'JSON copiado.' : 'Instrução CLI copiada.');
   } catch (error) {
-    notice.textContent = `Não foi possível copiar: ${error.message}`;
+    showToast(notice, `Não foi possível copiar: ${error.message}`);
   }
 }
 
 function render(state) {
   validateState(state);
   const overview = element('section', '', 'overview');
-  overview.append(element('h2', `Iniciativa: ${state.runId}`));
+  const heading = element('div', '', 'overview-heading');
+  const title = element('h2', 'Iniciativa: ');
+  title.append(element('span', state.runId, 'run-id-tag'));
+  heading.append(title, renderSourcesSection(state));
+  overview.append(heading);
   const metrics = element('div', '', 'metrics-row');
   const metricStatuses = ['COMPLETED', 'RUNNING', 'PENDING', 'FAILED'].map((key) => stepStatuses[key]);
   for (const definition of metricStatuses) {
     const count = state.nodes.flatMap((node) => node.steps.map((step) => step.status))
       .filter((status) => status === definition.value).length;
-    const metric = element('div', '', 'metric');
+    const metric = element('div', '', `metric ${definition.className}`);
     const icon = element('div', '', `metric-icon ${definition.className}`);
     const iconPaths = {
-      done: 'M5 10l4 4 7-7',
-      active: 'M10 3v4M10 13v4M3 10h4M13 10h4',
-      waiting: 'M10 6v4l2.5 2.5M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z',
-      error: 'M10 6v4M10 14h.01M10 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z',
+      done: 'M5.5 10.5l3 3 6-6.5',
+      active: 'M10 3v3M10 14v3M3 10h3M14 10h3M5.1 5.1l2.1 2.1M12.8 12.8l2.1 2.1',
+      waiting: 'M10 6v4l2.5 2M10 17.5a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z',
+      error: 'M10 6.5v4M10 13.5h.01M3.2 16.5L10 3.5l6.8 13H3.2Z',
     };
     icon.append(svgIcon(iconPaths[definition.className] || iconPaths.waiting));
-    const body = element('div', '', 'metric-body');
-    body.append(element('strong', String(count)), element('span', definition.label));
-    metric.append(icon, body);
+    const titleGroup = element('div', '', 'metric-title-group');
+    titleGroup.append(icon, element('span', definition.label, 'metric-label'));
+    metric.append(titleGroup, element('strong', String(count), 'metric-value'));
     metrics.append(metric);
   }
   overview.append(metrics);
-  content.append(overview, renderSourcesSection(state));
+  content.append(overview);
 
-  for (const node of state.nodes) {
+  for (const [index, node] of state.nodes.entries()) {
     const theme = element('section', '', 'theme');
+    const shouldOpen = index === 0;
+    if (shouldOpen) theme.classList.add('open');
     const header = element('div', '', 'theme-header');
     header.setAttribute('role', 'button');
     header.setAttribute('tabindex', '0');
-    header.setAttribute('aria-expanded', 'false');
+    header.setAttribute('aria-expanded', String(shouldOpen));
     const left = element('div', '', 'theme-header-left');
-    left.append(element('h2', node.tema), element('p', 'Clique para expandir o fluxo'));
-    const badge = element('span', 'Tema', 'theme-badge');
+    left.append(
+      element('h2', node.tema),
+      element('p', shouldOpen ? 'Selecione uma etapa para consultar seus artefatos' : 'Clique para expandir o fluxo'),
+    );
+    const badge = element('span', 'TEMA', 'theme-badge');
     const chevron = element('span', '', 'theme-chevron');
     chevron.append(svgIcon('M5 8l5 5 5-5'));
     const right = element('div', '', 'theme-header-right');
@@ -411,6 +515,41 @@ function closeDetails() {
   overlay.hidden = true;
 }
 
+function closeButton() {
+  const button = element('button', '', 'btn btn-secondary btn-icon');
+  button.type = 'button';
+  button.title = 'Fechar';
+  button.setAttribute('aria-label', 'Fechar');
+  button.append(svgIcon('M5 5l10 10M15 5L5 15'));
+  button.addEventListener('click', closeDetails);
+  return button;
+}
+
+async function copyRecommendedPrompt(definition) {
+  if (!definition.instructions || !definition.promptCommand || !definition.recommendedSources?.length) {
+    showToast(notice, 'Não há prompt recomendado para esta etapa.');
+    return;
+  }
+  if (typeof navigator === 'undefined' || !navigator.clipboard) {
+    showToast(notice, 'A cópia do prompt não está disponível neste navegador.');
+    return;
+  }
+  try {
+    const prompt = [
+      definition.promptCommand,
+      '',
+      definition.instructions,
+      '',
+      'Fontes recomendadas:',
+      ...definition.recommendedSources.map((source) => `- ${source}`),
+    ].join('\n');
+    await navigator.clipboard.writeText(prompt);
+    showToast(notice, 'Prompt recomendado copiado.');
+  } catch (error) {
+    showToast(notice, `Não foi possível copiar o prompt: ${error.message}`);
+  }
+}
+
 function renderArtifact(name, artifact, sequence, loads) {
   const item = element('div', '', 'artifact');
   const header = element('div', '', 'artifact-header');
@@ -449,16 +588,24 @@ async function showDetails(node, definition) {
   details.hidden = false;
   overlay.hidden = false;
   const topbar = element('div', '', 'details-topbar');
-  const close = element('button', 'Fechar', 'btn btn-secondary');
-  close.type = 'button';
-  close.addEventListener('click', closeDetails);
-  topbar.append(element('h2', labels[definition.id] || definition.id), close);
+  const actions = element('div', '', 'details-actions');
+  const copyPrompt = element('button', 'Copiar prompt', 'btn btn-secondary');
+  copyPrompt.type = 'button';
+  copyPrompt.title = 'Copiar prompt recomendado para esta etapa';
+  copyPrompt.setAttribute('aria-label', copyPrompt.title);
+  copyPrompt.append(svgIcon('M7 7h9v10H7z M4 13H3V3h9v1'));
+  copyPrompt.addEventListener('click', () => copyRecommendedPrompt(definition));
+  actions.append(copyPrompt, closeButton());
+  topbar.append(element('h2', labels[definition.id] || definition.id), actions);
   details.append(topbar);
   overlay.addEventListener('click', closeDetails, { once: true });
 
   const scroll = element('div', '', 'details-scroll');
+  const statusRow = element('div', '', 'detail-status-row');
+  statusRow.append(statusBadge(state.status));
+  scroll.append(statusRow);
   const meta = element('div', '', 'detail-meta-row');
-  meta.append(element('span', node.tema, 'detail-chip'), statusBadge(state.status));
+  meta.append(element('span', node.tema, 'detail-chip'));
   meta.append(element('span', definition.requires.length
     ? `Depende de: ${definition.requires.join(', ')}` : 'Sem dependências', 'detail-chip'));
   scroll.append(meta);
@@ -588,16 +735,16 @@ function renderMarkdown(text) {
 
 function getLastInitiative() {
   try { return localStorage.getItem(lastInitiativeKey); }
-  catch (error) { notice.textContent = `Não foi possível lembrar a iniciativa: ${error.message}`; return null; }
+  catch (error) { showToast(notice, `Não foi possível lembrar a iniciativa: ${error.message}`); return null; }
 }
 
 function rememberInitiative(name) {
   try { localStorage.setItem(lastInitiativeKey, name); }
-  catch (error) { notice.textContent = `Não foi possível lembrar a iniciativa: ${error.message}`; }
+  catch (error) { showToast(notice, `Não foi possível lembrar a iniciativa: ${error.message}`); }
 }
 
 async function readFile(file, sequence = ++loadSequence) {
-  message.textContent = '';
+  clearToasts(message);
   content.textContent = '';
   details.hidden = true;
   overlay.hidden = true;
@@ -612,7 +759,7 @@ async function readFile(file, sequence = ++loadSequence) {
   } catch (error) {
     if (sequence !== loadSequence) return;
     content.textContent = '';
-    message.textContent = `Não foi possível ler o arquivo: JSON ou estado inválido. ${error.message}`;
+    showToast(message, `Não foi possível ler o arquivo: JSON ou estado inválido. ${error.message}`);
   }
 }
 
@@ -627,7 +774,7 @@ async function selectInitiative() {
   } catch (error) {
     if (sequence !== loadSequence) return;
     content.textContent = '';
-    message.textContent = `Não foi possível abrir ${file.name}: ${error.message}`;
+    showToast(message, `Não foi possível abrir ${file.name}: ${error.message}`);
   }
 }
 
@@ -635,7 +782,7 @@ async function showFiles(items, folderName) {
   files = items.filter((item) => /\.json$/i.test(item.name)).sort((a, b) => a.name.localeCompare(b.name));
   initiative.textContent = '';
   content.textContent = '';
-  message.textContent = '';
+  clearToasts(message);
   details.hidden = true;
   overlay.hidden = true;
   detailSequence += 1;
@@ -643,7 +790,8 @@ async function showFiles(items, folderName) {
   initiative.disabled = files.length === 0;
   if (!files.length) {
     initiative.append(element('option', 'Nenhum JSON encontrado'));
-    notice.textContent = `Nenhum arquivo JSON encontrado em ${folderName}.`;
+    renderEmptyRuns(folderName);
+    clearToasts(notice);
     return;
   }
   for (const file of files) {
@@ -651,7 +799,7 @@ async function showFiles(items, folderName) {
     option.value = file.name;
     initiative.append(option);
   }
-  notice.textContent = '';
+  clearToasts(notice);
   const last = getLastInitiative();
   initiative.value = files.some((file) => file.name === last) ? last : files[0].name;
   await selectInitiative();
@@ -662,7 +810,16 @@ async function readDirectory(handle) {
   try {
     for (const part of ['.smith', 'runs']) runs = await runs.getDirectoryHandle(part);
   } catch (error) {
-    throw new Error(`Projeto inválido: pasta de execuções indisponível. ${error.message}`, { cause: error });
+    if (error.name !== 'NotFoundError' && error.code !== 'ENOENT') {
+      throw new Error(`Projeto inválido: pasta de execuções indisponível. ${error.message}`, { cause: error });
+    }
+    directory = handle;
+    project = handle;
+    projectFiles = undefined;
+    refreshFolder.hidden = false;
+    restoreFolder.hidden = true;
+    await showFiles([], handle.name);
+    return;
   }
   const items = [];
   for await (const entry of runs.values()) {
@@ -705,9 +862,9 @@ chooseFolder.addEventListener('click', async () => {
     const handle = await showDirectoryPicker({ mode: 'read' });
     await readDirectory(handle);
     try { await storedDirectory('put', handle); }
-    catch (error) { notice.textContent += ` Não foi possível lembrar a pasta: ${error.message}`; }
+    catch (error) { showToast(notice, `Não foi possível lembrar a pasta: ${error.message}`); }
   } catch (error) {
-    if (error.name !== 'AbortError') message.textContent = `Não foi possível abrir a pasta: ${error.message}`;
+    if (error.name !== 'AbortError') showToast(message, `Não foi possível abrir a pasta: ${error.message}`);
   }
 });
 
@@ -718,37 +875,33 @@ folderInput.addEventListener('change', async () => {
   const root = selected[0].webkitRelativePath.split('/')[0];
   const prefix = '.smith/runs/';
   if (!root || selected.some((file) => file.webkitRelativePath.split('/')[0] !== root)) {
-    message.textContent = 'Projeto inválido: selecione uma única raiz de projeto.';
+    showToast(message, 'Projeto inválido: selecione uma única raiz de projeto.');
     return;
   }
   const entries = selected.map((file) => [file.webkitRelativePath.split('/').slice(1).join('/'), file]);
   const runs = entries.filter(([path]) => path.startsWith(prefix) && !path.slice(prefix.length).includes('/'));
-  if (!runs.length) {
-    message.textContent = 'Projeto inválido: pasta de execuções não encontrada ou vazia.';
-    return;
-  }
   directory = undefined;
   project = undefined;
   projectFiles = new Map(entries);
   refreshFolder.hidden = true;
   restoreFolder.hidden = true;
   await showFiles(runs.map(([, file]) => ({ name: file.name, getFile: async () => file })), root);
-  notice.textContent += ' Para atualizar ou reabrir, selecione o projeto novamente.';
+  showToast(notice, 'Para atualizar ou reabrir, selecione o projeto novamente.');
 });
 
 restoreFolder.addEventListener('click', async () => {
   try {
     if (await directory.requestPermission({ mode: 'read' }) !== 'granted') {
-      message.textContent = 'Permissão de leitura para a pasta não concedida.';
+      showToast(message, 'Permissão de leitura para a pasta não concedida.');
       return;
     }
     await readDirectory(directory);
-  } catch (error) { message.textContent = `Não foi possível reabrir a pasta: ${error.message}`; }
+  } catch (error) { showToast(message, `Não foi possível reabrir a pasta: ${error.message}`); }
 });
 
 refreshFolder.addEventListener('click', async () => {
   try { await readDirectory(directory); }
-  catch (error) { message.textContent = `Não foi possível atualizar a pasta: ${error.message}`; }
+  catch (error) { showToast(message, `Não foi possível atualizar a pasta: ${error.message}`); }
 });
 
 initiative.addEventListener('change', selectInitiative);
@@ -760,9 +913,9 @@ if (typeof showDirectoryPicker === 'function' && typeof indexedDB !== 'undefined
     if (await handle.queryPermission({ mode: 'read' }) === 'granted') await readDirectory(handle);
     else {
       restoreFolder.hidden = false;
-      notice.textContent = `Autorize o acesso para reabrir o projeto ${handle.name}.`;
+      showToast(notice, `Autorize o acesso para reabrir o projeto ${handle.name}.`);
     }
-  }).catch((error) => { notice.textContent = `Não foi possível recuperar o último projeto: ${error.message}`; });
+  }).catch((error) => { showToast(notice, `Não foi possível recuperar o último projeto: ${error.message}`); });
 } else {
-  notice.textContent = 'Este navegador pode exigir que o projeto seja selecionado novamente ao abrir a página.';
+  showToast(notice, 'Este navegador pode exigir que o projeto seja selecionado novamente ao abrir a página.');
 }

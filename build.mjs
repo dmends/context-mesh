@@ -177,7 +177,11 @@ async function discoverSourceFiles(repositoryRoot) {
   const srcDir = join(repositoryRoot, 'src');
   const entries = await readdir(srcDir, { recursive: true, withFileTypes: true });
   return entries
-    .filter((e) => e.isFile() && PUBLISHABLE_EXTENSIONS.has(extname(e.name)) && !e.name.endsWith('.test.mjs') && !e.name.endsWith('.mjs.md'))
+    .filter((e) => {
+      const sourcePath = relative(srcDir, join(e.parentPath, e.name)).split(sep).join('/');
+      return e.isFile() && !sourcePath.startsWith('report/prototipe/') &&
+        PUBLISHABLE_EXTENSIONS.has(extname(e.name)) && !e.name.endsWith('.test.mjs') && !e.name.endsWith('.mjs.md');
+    })
     .map((e) => `src/${relative(srcDir, join(e.parentPath, e.name)).split(sep).join('/')}`)
     .sort();
 }
@@ -195,7 +199,7 @@ async function discoverPrompts(repositoryRoot) {
   const promptsDir = join(repositoryRoot, 'resources', 'prompts');
   const entries = await readdir(promptsDir, { withFileTypes: true });
   return entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith('.prompt.md'))
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
     .map((entry) => `resources/prompts/${entry.name}`)
     .sort();
 }
@@ -555,6 +559,7 @@ export async function buildPackage({
 
   const packageFiles = [
     'README.md',
+    'resources/instructions/initial-project.md',
     'resources/prompt-history.json',
     'resources/legacy-hashes.txt',
     ...await discoverSourceFiles(root),
@@ -565,6 +570,7 @@ export async function buildPackage({
     const content = await readPackageFile(root, sourceRelativePath, 'Package file');
     const destinationRelativePath = sourceRelativePath
       .replace(/^src\//, '')
+      .replace(/^resources\/instructions\//, 'instructions/')
       .replace(/^resources\/templates\//, 'templates/')
       .replace(/^resources\/prompts\//, 'workflows/prompts/')
       .replace(/^resources\/prompt-history\.json$/, 'prompt-history.json')

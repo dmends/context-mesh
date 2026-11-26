@@ -29,7 +29,7 @@ Consulte `sources list` antes de explorar. Só proponha o cadastro de uma fonte 
 node .copilot/plugins/smith/core/cli.mjs ready --workspace . --run-id <run-id> --tema "<tema>" --input <arquivo-fonte> [--input <outro-arquivo-fonte>...]
 ```
 
-Confirme que `as-is-knowledge` aparece em `readySteps`. Se não aparecer, explique o bloqueio e não gere nem registre a saída. Localize o endpoint principal que implementa a funcionalidade solicitada. A partir dele, rastreie o fluxo de execução: handlers, serviços, repositórios e integrações externas acionados. Documente validações em ordem de aplicação, regras de negócio com suas condições e os possíveis retornos para cenários de sucesso e de erro. Use somente fatos comprováveis no código. Salve o documento em `workspace/.discovery/<run-id>/results/as-is-knowledge/`, sem sobrescrever arquivos existentes.
+Confirme que `as-is-knowledge` aparece em `readySteps`. Se não aparecer, explique o bloqueio e não gere nem registre a saída. Localize o endpoint principal que implementa a funcionalidade solicitada. A partir dele, rastreie o fluxo de execução: handlers, serviços, repositórios e integrações externas acionados. Documente validações em ordem de aplicação, regras de negócio com suas condições e os possíveis retornos para cenários de sucesso e de erro. Use somente fatos comprováveis no código. Salve o documento em `workspace/.discovery/<run-id>/as-is-knowledge/`, sem sobrescrever arquivos existentes.
 
 A única gravação de documentos permitida é via `publish`. Consulte `outputDirectory` em `ready`; não invente um destino.
 
@@ -38,5 +38,5 @@ Não entregue o documento apenas na conversa. Só conclua depois que `publish` t
 Depois que o arquivo existir, registre seu caminho relativo à raiz do projeto:
 
 ```bash
-node .copilot/plugins/smith/core/cli.mjs complete --workspace . --run-id <run-id> --tema "<tema>" --step as-is-knowledge --artifact knowledge=workspace/.discovery/<run-id>/results/as-is-knowledge/<arquivo>.md --input <arquivo-fonte> [--input <outro-arquivo-fonte>...]
+node .copilot/plugins/smith/core/cli.mjs complete --workspace . --run-id <run-id> --tema "<tema>" --step as-is-knowledge --artifact knowledge=workspace/.discovery/<run-id>/as-is-knowledge/<arquivo>.md --input <arquivo-fonte> [--input <outro-arquivo-fonte>...]
 ```

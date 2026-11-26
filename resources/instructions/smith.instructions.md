@@ -25,7 +25,7 @@ Smith estrutura o trabalho de desenvolvimento em fases sequenciais rastreadas pe
 - **Sempre responder em Português (pt-br).**
 
 ## Regras de Execução e Economia de Contexto
-- Sempre use subagentes nativos do próprio ambiente/IDE para leitura de arquivos longos, materiais em `.input/` e `.knowledge/` e exploração de código, evitando poluir a janela de contexto principal com conteúdo bruto.
+- Sempre use subagentes nativos do próprio ambiente/IDE para leitura de arquivos longos, materiais nas pastas das etapas e exploração de código, evitando poluir a janela de contexto principal com conteúdo bruto.
 - Agentes externos via MCP (`Claude` e `Antigravity`) devem ser usados exclusivamente conforme os critérios definidos na seção `Orquestração Multi-Agente via MCP`.
 
 ## Política de Documentação
@@ -37,19 +37,24 @@ Classifique pelo tipo de conhecimento produzido, não apenas pela origem do mate
 
 | Conteúdo produzido     | Critério                                                                                                                                                                            | Destino                                                                                                                                                                               |
 |------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Conhecimento As-Is     | Análise baseada exclusivamente no código, descrevendo o comportamento atual sem misturar insumos externos ou decisões propostas.                                                    | `workspace/.knowledge/legado/` ou `workspace/.knowledge/refatorado/`, conforme a implementação; use `workspace/.knowledge/dominios/` para conhecimento independente da implementação. |
-| Resultado de discovery | Síntese de uma investigação que combina materiais de `workspace/.discovery/[iniciativa]/.input/` — como transcrições ou documentação importada via MCP — com o knowledge existente. | `workspace/.discovery/[iniciativa]/results/`                                                                                                                                          |
-| Decisão                | Escolha ou definição adotada, em vez de uma descrição do comportamento atual ou de um achado da investigação.                                                                       | `workspace/.discovery/[iniciativa]/decisions/`                                                                                                                                        |
+| Knowledge As-Is        | Análise baseada exclusivamente no código, descrevendo o comportamento atual sem misturar insumos externos ou decisões propostas.                                                    | `workspace/.discovery/<iniciativa>/as-is-knowledge/`                                                                                                                                    |
+| Épico de negócio       | Transcrições, histórias e épico inicial para validação.                                                                                                                               | `workspace/.discovery/<iniciativa>/business-epic/`                                                                                                                                      |
+| Discovery consolidado  | Síntese do épico, knowledge, contexto, dependências e riscos.                                                                                                                          | `workspace/.discovery/<iniciativa>/discovery-consolidation/`                                                                                                                            |
+| Especificação técnica  | Solução To-Be e ARD de entrada do arquiteto.                                                                                                                                           | `workspace/.discovery/<iniciativa>/tech-solution-specification/`                                                                                                                        |
+| Decisão                | Escolha ou definição adotada, em vez de uma descrição do comportamento atual ou de um achado da investigação.                                                                       | `workspace/.discovery/<iniciativa>/decision-record/`                                                                                                                                   |
+| Gate de validação      | Aprovação explícita do pacote upstream.                                                                                                                                                 | `workspace/.discovery/<iniciativa>/validation-gate/`                                                                                                                                    |
+| Quebra de histórias    | Histórias, tasks e plano de execução.                                                                                                                                                   | `workspace/.discovery/<iniciativa>/story-task-breakdown/`                                                                                                                               |
+| Refinamento técnico    | Critérios de aceite e detalhamento técnico das histórias.                                                                                                                               | `workspace/.discovery/<iniciativa>/technical-refinement/`                                                                                                                              |
 
-Os materiais-fonte permanecem em `.input/`; `results/` recebe a síntese produzida a partir deles. Uma investigação pode gerar um resultado em `results/` e, se consolidar conhecimento As-Is reutilizável, também atualizar o `knowledge` pertinente. Não duplique a análise inteira: registre em cada local apenas o conteúdo correspondente à sua finalidade.
+O comando `cli.mjs init` cria essas oito pastas diretamente em `workspace/.discovery/<iniciativa>/`. Insumos e artefatos ficam na pasta da etapa correspondente; não crie níveis adicionais como `input/`, `results/` ou `plans/`.
 
 ### Fluxo de análise e produção de documentação
 Identifique primeiro o tipo de pedido. O knowledge pode orientar a investigação, mas afirmações As-Is sobre o sistema devem ser verificadas no código. Só crie ou atualize arquivos quando o usuário solicitar o registro.
 
-Uma menção ou proposta em transcrição não é automaticamente uma decisão: registre em `decisions/` apenas escolhas ou definições adotadas. Se forem produzidos tipos diferentes de conteúdo, registre cada um no destino correspondente, sem duplicar a análise inteira.
+Uma menção ou proposta em transcrição não é automaticamente uma decisão: registre em `decision-record/` apenas escolhas ou definições adotadas. Se forem produzidos tipos diferentes de conteúdo, registre cada um no destino correspondente, sem duplicar a análise inteira.
 
 #### Fluxo de Downstream (Especificação To-Be, Quebras e Planos)
-O Downstream parte de artefatos consolidados em `.discovery/<iniciativa>/results/` e `.discovery/<iniciativa>/decisions/`, validados pelo usuário no Gate de Validação e Aprovação. Suas saídas — especificações técnicas To-Be, histórias/tasks quebradas e planos de execução — devem ser registradas em `.discovery/<iniciativa>/plans/`, somente após solicitação explícita do usuário. Antes de gerar cada arquivo, apresente o conteúdo intermediário na conversa para revisão e aguarde a aprovação explícita do usuário.
+O Downstream parte dos artefatos de `discovery-consolidation/`, `tech-solution-specification/` e `decision-record/`, validados pelo usuário no Gate de Validação e Aprovação. Registre cada saída na pasta com o nome da etapa correspondente, somente após solicitação explícita do usuário. Antes de gerar cada arquivo, apresente o conteúdo intermediário na conversa para revisão e aguarde a aprovação explícita do usuário.
 
 ## Estrutura de Documentação
 Use esta árvore como referência para localizar e classificar os documentos. O `run-id` identifica a iniciativa e `tema` identifica um subnó, sem criar uma pasta por tema. Substitua `<iniciativa>` e `<dominio>` pelos identificadores correspondentes.
@@ -60,12 +65,14 @@ workspace/
 ├── .templates/                       # modelos para documentos recorrentes
 ├── .discovery/
 │   └── <iniciativa>/
-│       ├── plans/                    # planos
-│       ├── results/                  # resultados de investigações e ou documentos consolidados
-│       ├── decisions/                # escolhas e definições adotadas
-│       └── .input/
-│           ├── .transcripts/         # transcrições de agendas
-│           └── business-stories/     # histórias de negócio de entrada
+│       ├── as-is-knowledge/
+│       ├── business-epic/            # transcrições, histórias e épico
+│       ├── decision-record/
+│       ├── discovery-consolidation/
+│       ├── story-task-breakdown/
+│       ├── tech-solution-specification/
+│       ├── technical-refinement/
+│       └── validation-gate/
 └── .knowledge/
     ├── dominios/                     # conhecimento independente da implementação
     ├── legado/                       # conhecimento As-Is do sistema legado
@@ -82,14 +89,14 @@ Use os modelos em `plugin/templates/` ao criar documentos desses tipos:
 
 | Template                         | Usar para                                                                                               | Destino do documento preenchido                                                                                            |
 |----------------------------------|---------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------|
-| `001-knowledge-as-is.md`         | Registrar comportamento As-Is verificado exclusivamente no código.                                      | `workspace/.knowledge/legado/`, `workspace/.knowledge/refatorado/` ou `workspace/.knowledge/dominios/`, conforme o escopo. |
-| `002-discovery-result.md`        | Consolidar uma investigação que combina materiais de `.input/`, knowledge e, quando pertinente, código. | `workspace/.discovery/<iniciativa>/results/`                                                                               |
-| `003-decision-record.md`         | Registrar uma escolha ou definição efetivamente adotada.                                                | `workspace/.discovery/<iniciativa>/decisions/`                                                                             |
-| `004-business-epic.md`           | Consolidar agendas em um épico de negócio tratado como versão inicial para validação e evolução.        | `workspace/.discovery/<iniciativa>/results/`                                                                               |
-| `000-knowledge-api.md`           | Documentar o contrato As-Is de entrada de uma API, comprovado exclusivamente pelo código.               | `workspace/.knowledge/legado/` ou `workspace/.knowledge/refatorado/`, conforme o sistema.                                  |
-| `005-technical-specification.md` | Especificação técnica To-Be.                                                                            | `workspace/.discovery/<iniciativa>/plans/` (somente após solicitação explícita e aprovação do usuário).                    |
-| `006-story-task-breakdown.md`    | Quebra de histórias/tasks.                                                                              | `workspace/.discovery/<iniciativa>/plans/` (somente após solicitação explícita e aprovação do usuário).                    |
-| `007-execution-plan.md`          | Plano de execução.                                                                                      | `workspace/.discovery/<iniciativa>/plans/` (somente após solicitação explícita e aprovação do usuário).                    |
+| `001-knowledge-as-is.md`         | Registrar comportamento As-Is verificado exclusivamente no código.                                      | `workspace/.discovery/<iniciativa>/as-is-knowledge/`                                                                        |
+| `002-discovery-result.md`        | Consolidar uma investigação com knowledge e, quando pertinente, código.                                  | `workspace/.discovery/<iniciativa>/discovery-consolidation/`                                                                |
+| `003-decision-record.md`         | Registrar uma escolha ou definição efetivamente adotada.                                                | `workspace/.discovery/<iniciativa>/decision-record/`                                                                        |
+| `004-business-epic.md`           | Consolidar agendas em um épico de negócio tratado como versão inicial para validação e evolução.        | `workspace/.discovery/<iniciativa>/business-epic/`                                                                          |
+| `000-knowledge-api.md`           | Documentar o contrato As-Is de entrada de uma API, comprovado exclusivamente pelo código.               | `workspace/.discovery/<iniciativa>/as-is-knowledge/`                                                                      |
+| `005-technical-specification.md` | Especificação técnica To-Be.                                                                            | `workspace/.discovery/<iniciativa>/tech-solution-specification/`                                                            |
+| `006-story-task-breakdown.md`    | Quebra de histórias/tasks.                                                                              | `workspace/.discovery/<iniciativa>/story-task-breakdown/`                                                                   |
+| `007-execution-plan.md`          | Plano de execução.                                                                                      | `workspace/.discovery/<iniciativa>/story-task-breakdown/`                                                                   |
 
 Os arquivos em `plugin/templates/` são modelos reutilizáveis, não resultados de discovery. Ao preencher um modelo, cite as fontes consultadas em uma seção agregada no final: por exemplo, agendas por data e participantes/áreas, ou código por sistema e nome dos módulos. Não exija paths, URLs, commits, símbolos ou IDs de fonte, nem vincule cada afirmação a uma referência individual. Registre incertezas, divergências e limitações de forma ampla no final; não classifique cada item individualmente, a menos que seja necessário para destacar uma pendência relevante. O template de contrato de entrada descreve somente o que está implementado no código; não presuma que uma especificação externa representa o comportamento atual. O épico consolidado de agendas é uma versão inicial para validação e evolução, não um rascunho nem uma decisão aprovada. Só crie um documento preenchido quando o usuário solicitar o registro.
 

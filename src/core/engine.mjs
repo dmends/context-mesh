@@ -85,7 +85,7 @@ async function resolveRunContext(context) {
         ) {
           throw new WorkflowError('PREREQ_NOT_MET', `Input resolves outside the workspace: ${input}`);
         }
-        const topic = /^workspace\/\.discovery\/([^/]+)\/\.input\//.exec(actualRelativePath.split(sep).join('/'))?.[1];
+        const topic = /^workspace\/\.discovery\/([^/]+)\//.exec(actualRelativePath.split(sep).join('/'))?.[1];
         if (topic) topics.add(topic);
       } catch (error) {
         if (error.message.startsWith('Input resolves outside')) {

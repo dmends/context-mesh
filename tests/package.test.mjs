@@ -165,6 +165,7 @@ const EXPECTED_PACKAGE_FILES = [
   'utils/repository/sync/sync.mjs',
   'utils/template-loader.mjs',
   ...TEMPLATE_FILES.map((name) => `templates/${name}`),
+  'instructions/initial-project.md',
   'workflows/project-lifecycle.mjs',
   ...PROMPT_ASSETS.map(({ file }) => `workflows/prompts/${file}`),
 ].sort();
@@ -336,7 +337,7 @@ test('build creates a manifest-valid artifact from the explicit allowlist only',
   assert.equal(existsSync(path.join(output, 'agents', 'copilot', '.github', 'copilot-instructions.md')), true);
   assert.equal(existsSync(path.join(output, 'agents', 'copilot', '.github', 'instructions', 'smith.instructions.md')), true);
   assert.equal(existsSync(path.join(output, 'assets')), false);
-  assert.equal(existsSync(path.join(output, 'instructions')), false);
+  assert.equal(existsSync(path.join(output, 'instructions', 'initial-project.md')), true);
   assert.equal(existsSync(path.join(output, 'tests')), false);
   assert.equal(existsSync(path.join(output, '.idea')), false);
   assert.equal(existsSync(path.join(output, 'workspace')), false);
@@ -364,6 +365,7 @@ test('artifact installs in isolation and keeps all templates and runtime paths a
   for (const template of TEMPLATE_FILES) {
     assert.equal(existsSync(path.join(installedRoot, 'templates', template)), true);
   }
+  assert.equal(existsSync(path.join(output, 'instructions', 'initial-project.md')), true);
   assert.match(instructions, /smith-\*/);
   assert.equal(result.prompts.length, 10);
   assert.doesNotMatch(instructions, /plugin\/(?:mcp|utils\/repository\/sync|core)\//);

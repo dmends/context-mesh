@@ -194,15 +194,18 @@ export async function diagnoseProject({
   const instructionsRequired = SUPPORTED_CLIENTS.has(client);
   const instructionsAvailable =
     targetIsValid &&
-    (await fileExists(join(target, '.github', 'instructions', 'smith.instructions.md')));
+    (
+      await fileExists(join(target, '.github', 'copilot-instructions.md')) ||
+      await fileExists(join(target, '.github', 'instructions', 'smith.instructions.md'))
+    );
   checks.push({
     id: 'instructions',
     ok: instructionsRequired ? instructionsAvailable : true,
     required: instructionsRequired,
     message:
       instructionsAvailable
-        ? 'Supplemental Copilot instructions are installed'
-        : 'Supplemental Copilot instructions are missing; install from a built plugin package',
+        ? 'Copilot project instructions are installed'
+        : 'Copilot project instructions are missing; install from a built plugin package',
   });
   let jetbrainsPromptsAvailable = false;
   let promptsMatchRuntime = false;

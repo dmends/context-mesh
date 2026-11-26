@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -35,6 +35,7 @@ function createPluginFixture(t) {
   mkdirSync(path.join(sourceRoot, 'instructions'), { recursive: true });
   mkdirSync(path.join(sourceRoot, 'report'), { recursive: true });
   mkdirSync(path.join(sourceRoot, 'templates'), { recursive: true });
+  mkdirSync(path.join(sourceRoot, 'workflows', 'prompts'), { recursive: true });
   writeFileSync(
     path.join(sourceRoot, 'plugin.json'),
     JSON.stringify({
@@ -48,6 +49,7 @@ function createPluginFixture(t) {
   writeFileSync(path.join(sourceRoot, 'report', 'index.html'), readFileSync(new URL('../src/report/index.html', import.meta.url)));
   writeFileSync(path.join(sourceRoot, 'report', 'workflow.css'), readFileSync(new URL('../src/report/workflow.css', import.meta.url)));
   writeFileSync(path.join(sourceRoot, 'report', 'workflow.js'), readFileSync(new URL('../src/report/workflow.js', import.meta.url)));
+  writeFileSync(path.join(sourceRoot, 'instructions', 'initial-project.md'), readFileSync(new URL('../resources/instructions/initial-project.md', import.meta.url)));
   writeFileSync(path.join(sourceRoot, 'templates', 'sample.md'), 'template\n');
   const promptHistory = Object.fromEntries(['1.1.0', '1.2.0'].map((version) => [
     version,
@@ -390,6 +392,47 @@ test('re-running an identical install is idempotent', async (t) => {
 
   assert.equal(first.status, 'installed');
   assert.equal(second.status, 'unchanged');
+  assert.equal(first.instructionFile, path.join(targetRoot, '.github', 'copilot-instructions.md'));
+  assert.equal(existsSync(first.instructionFile), true);
+});
+
+test('reinstall uses copilot-instructions when only the legacy supplement exists', async (t) => {
+  const { initializePlugin } = await loadInit();
+  const sourceRoot = createPluginFixture(t);
+  const targetRoot = createDirectory(t, 'plugin-legacy-instructions-target-');
+  const first = await initializePlugin({ sourceRoot, targetRoot, client: 'copilot-cli' });
+  const legacySupplement = path.join(
+    targetRoot,
+    '.github',
+    'instructions',
+    'smith.instructions.md',
+  );
+  mkdirSync(path.dirname(legacySupplement), { recursive: true });
+  renameSync(first.instructionFile, legacySupplement);
+
+  const result = await initializePlugin({ sourceRoot, targetRoot, client: 'copilot-cli' });
+
+  assert.equal(result.instructionFile, path.join(targetRoot, '.github', 'copilot-instructions.md'));
+  assert.equal(existsSync(result.instructionFile), true);
+});
+
+test('refreshes viewer JavaScript when the HTML template is unchanged', async (t) => {
+  const { initializePlugin } = await loadInit();
+  const sourceRoot = createPluginFixture(t);
+  const targetRoot = createDirectory(t, 'plugin-viewer-refresh-target-');
+  const first = await initializePlugin({ sourceRoot, targetRoot, client: 'jetbrains' });
+  const sourceScript = path.join(sourceRoot, 'report', 'workflow.js');
+  const installedScript = path.join(targetRoot, '.smith', 'report', 'workflow.js');
+  const viewerContent = readFileSync(first.viewerPath, 'utf8');
+  const updatedScript = `${readFileSync(sourceScript, 'utf8')}\n// viewer refresh marker\n`;
+  writeFileSync(sourceScript, updatedScript);
+
+  const result = await initializePlugin({ sourceRoot, targetRoot, client: 'jetbrains' });
+
+  assert.equal(result.viewerStatus, 'updated');
+  assert.equal(readFileSync(installedScript, 'utf8'), updatedScript);
+  assert.equal(readFileSync(result.viewerPath, 'utf8'), viewerContent);
+  assert.equal(first.viewerPath, result.viewerPath);
 });
 
 test('dry-run reports planned files without writing or invoking commands', async (t) => {
@@ -969,7 +1012,7 @@ test('doctor verifies all seven JetBrains prompt files', async (t) => {
   addJetBrainsPromptAssets(sourceRoot);
   const targetRoot = createDirectory(t, 'jetbrains-doctor-target-');
   const { initializePlugin } = await loadInit();
-  await initializePlugin({ sourceRoot, targetRoot, client: 'jetbrains' });
+  const pluginInstall = await initializePlugin({ sourceRoot, targetRoot, client: 'jetbrains' });
 
   const mcpConfigPath = path.join(targetRoot, 'mcp.json');
   const installed = await diagnoseProject({
@@ -997,13 +1040,7 @@ test('doctor verifies all seven JetBrains prompt files', async (t) => {
     false,
   );
 
-  const instructionsPath = path.join(
-    targetRoot,
-    '.github',
-    'instructions',
-    'smith.instructions.md',
-  );
-  unlinkSync(instructionsPath);
+  unlinkSync(pluginInstall.instructionFile);
   const missingInstructions = await diagnoseProject({
     targetRoot,
     client: 'jetbrains',

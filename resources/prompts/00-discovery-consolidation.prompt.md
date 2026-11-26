@@ -14,7 +14,7 @@ A seleção deste prompt é um pedido explícito para criar e registrar o docume
 Não altere instruções globais do projeto, configurações pessoais ou MCP; não instale componentes nem sincronize repositórios. Gere arquivos somente dentro de `workspace/`.
 
 - **Pré-requisitos:** artefatos válidos de `business-epic` e `as-is-knowledge`.
-- **Fontes:** épico inicial em `workspace/.discovery/<iniciativa>/results/business-epic/`, knowledge As-Is em `workspace/.knowledge/` e contexto em `workspace/.context/`.
+- **Fontes:** épico inicial em `workspace/.discovery/<iniciativa>/business-epic/`, knowledge As-Is em `workspace/.discovery/<iniciativa>/as-is-knowledge/` (e outros materiais em `workspace/.knowledge/`, quando houver) e contexto em `workspace/.context/`.
 - **Saída registrada:** `discovery-consolidation`.
 - **Template instalado:** `.copilot/plugins/smith/templates/000-discovery-consolidation.md`.
 
@@ -54,8 +54,8 @@ Se a clareza for Baixa por incerteza funcional, eleve o porte ao menos uma faixa
 
 Leia o template instalado. Preserve todos os títulos e seções do template; preencha todas as seções, usando `a validar`, `a definir` ou `nenhuma` quando a informação não estiver disponível. Não invente fatos. Trate o Consolidado como versão para validação, nunca como decisão aprovada.
 
-Depois que o arquivo existir em `workspace/.discovery/<iniciativa>/results/consolidation/`, registre seu caminho relativo à raiz do projeto:
+Depois que o arquivo existir em `workspace/.discovery/<iniciativa>/discovery-consolidation/`, registre seu caminho relativo à raiz do projeto:
 
 ```bash
-node .copilot/plugins/smith/core/cli.mjs complete --workspace . --run-id <run-id> --tema "<tema>" --step discovery-consolidation --artifact discovery-consolidation=workspace/.discovery/<iniciativa>/results/consolidation/<arquivo>.md --input <arquivo-fonte> [--input <outro-arquivo-fonte>...]
+node .copilot/plugins/smith/core/cli.mjs complete --workspace . --run-id <run-id> --tema "<tema>" --step discovery-consolidation --artifact discovery-consolidation=workspace/.discovery/<iniciativa>/discovery-consolidation/<arquivo>.md --input <arquivo-fonte> [--input <outro-arquivo-fonte>...]
 ```

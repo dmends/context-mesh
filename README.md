@@ -49,7 +49,7 @@ Para instruções detalhadas de build, distribuição e validação por agente, 
 | Épico de negócio | `business epic` | Transcrições, histórias de negócio | `business-epic` |
 | Knowledge As-Is | `as-is knowledge` | Fontes registradas com papel `legacy` ou `reference` | `knowledge` |
 | Consolidado | `consolidar discovery` | Épico + Knowledge As-Is | `discovery-consolidation` |
-| Resultado de discovery | `discovery result` | Fontes de discovery + knowledge | `discovery-result` |
+| Resultado de discovery | `discovery result` | Fontes de discovery + knowledge | `discovery-consolidation` |
 | Especificação técnica | `tech spec` | Consolidado, ARD | `tech-solution-specification` |
 | Registro de decisão | `decision record` | Especificação técnica aprovada | `decision-record` |
 | **Gate de validação** | `validation gate` | Épico + Spec + Decisões | Requer confirmação `APPROVE` |

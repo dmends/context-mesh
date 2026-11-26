@@ -15,11 +15,11 @@ A seleção deste prompt é um pedido explícito para criar e registrar o arquiv
 Não altere instruções globais do projeto, configurações pessoais ou MCP; não instale componentes nem sincronize repositórios. Salve o épico somente dentro de `workspace/`. O estado do run é criado pela CLI em `.smith/runs/<run-id>.json`; não crie nem edite esse arquivo manualmente.
 
 - **Pré-requisitos:** nenhum (etapa raiz).
-- **Fontes:** transcrições em `workspace/.discovery/<iniciativa>/input/transcripts/` e histórias de negócio em `workspace/.discovery/<iniciativa>/input/business-stories/`.
+- **Fontes:** transcrições e histórias de negócio colocadas em `workspace/.discovery/<iniciativa>/business-epic/`.
 - **Saída registrada:** `business-epic`.
 - **Template instalado:** `.copilot/plugins/smith/templates/004-business-epic.md`.
 
-**Economia de Contexto e Subagentes:** Transcrições e histórias brutas costumam ser muito extensas. Nunca carregue todo o conteúdo bruto na janela principal da conversa. Utilize subagentes nativos para ler e extrair resumos das transcrições em `workspace/.discovery/<iniciativa>/input/transcripts/` e histórias em `workspace/.discovery/<iniciativa>/input/business-stories/`. Para grandes volumes de documentos, utilize o MCP `Ask-Antigravity` para sintetizar o material antes da redação.
+**Economia de Contexto e Subagentes:** Transcrições e histórias brutas costumam ser muito extensas. Nunca carregue todo o conteúdo bruto na janela principal da conversa. Utilize subagentes nativos para ler e extrair resumos dos arquivos em `workspace/.discovery/<iniciativa>/business-epic/`. Para grandes volumes de documentos, utilize o MCP `Ask-Antigravity` para sintetizar o material antes da redação.
 
 Use `run-id` como ID estável da iniciativa (por exemplo, `motor-recorrencia`) e `tema` como nome do subnó (por exemplo, `Regra da Primeira Parcela`). Vários temas compartilham o mesmo `run-id`; mantenha o mesmo tema e a mesma lista de arquivos-fonte em todos os comandos deste subnó. Se uma fonte for diretório, liste recursivamente os arquivos regulares pertinentes e passe cada arquivo como `--input`; nunca passe diretórios. Os caminhos `--input` são relativos à raiz do projeto e não devem incluir artefatos gerados. Antes de redigir, execute:
 
@@ -46,5 +46,5 @@ Leia o template instalado. Preserve todos os títulos, subtítulos e tabelas do 
 Depois que o arquivo existir, registre seu caminho relativo à raiz do projeto:
 
 ```bash
-node .copilot/plugins/smith/core/cli.mjs complete --workspace . --run-id <run-id> --tema "<tema>" --step business-epic --artifact business-epic=workspace/.discovery/<iniciativa>/results/business-epic/<arquivo>.md --input <arquivo-fonte> [--input <outro-arquivo-fonte>...]
+node .copilot/plugins/smith/core/cli.mjs complete --workspace . --run-id <run-id> --tema "<tema>" --step business-epic --artifact business-epic=workspace/.discovery/<iniciativa>/business-epic/<arquivo>.md --input <arquivo-fonte> [--input <outro-arquivo-fonte>...]
 ```

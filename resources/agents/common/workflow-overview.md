@@ -23,7 +23,7 @@ Smith estrutura o trabalho de desenvolvimento em fases sequenciais rastreadas pe
 
 ## Regras de Execução e Economia de Contexto
 
-- **Subagentes nativos:** Sempre use subagentes nativos do próprio ambiente/IDE para leitura de arquivos longos, exploração profunda de código e análise de materiais em `.input/` e `.knowledge/`, evitando poluir a janela de contexto principal com conteúdo bruto.
+- **Subagentes nativos:** Sempre use subagentes nativos do próprio ambiente/IDE para leitura de arquivos longos, exploração profunda de código e análise de materiais nas pastas das etapas, evitando poluir a janela de contexto principal com conteúdo bruto.
 - **Delegação via MCP:** Agentes externos (`Claude Code` e `Antigravity`) devem ser acionados via MCP somente para tarefas especializadas (análises arquiteturais profundas ou sínteses de grandes volumes). Tarefas simples e implementação devem ser resolvidas nativamente.
 - **Economia de tokens:** Não faça narrações passo-a-passo ("Vou ler X, agora vou fazer Y"). Responda de forma direta e concisa apenas com o resultado solicitado.
 - **Fontes dinâmicas:** Consulte `sources list` e use somente caminhos locais cadastrados e selecionados pelo workflow. Não presuma pastas `workspace/src/legado` ou `workspace/src/refatorado`; respeite o papel e `scope` da fonte. Cadastre/atualize somente após indicação e confirmação do usuário, pelo CLI, nunca editando `.smith/runs/`.
@@ -32,10 +32,10 @@ Smith estrutura o trabalho de desenvolvimento em fases sequenciais rastreadas pe
 
 - **NÃO criar arquivos .md de nenhum tipo a menos que explicitamente solicitado pelo usuário.**
 - Registre cada tipo de conhecimento no seu destino correto:
-  - `workspace/.knowledge/`: Comportamento As-Is verificado no código (`legado/`, `refatorado/`, `dominios/`).
-  - `workspace/.discovery/<iniciativa>/results/`: Síntese de investigações combinando `.input/` com código.
-  - `workspace/.discovery/<iniciativa>/decisions/`: Escolhas e decisões explicitamente adotadas.
-  - `workspace/.discovery/<iniciativa>/plans/`: Especificações To-Be, histórias e planos (apenas após o Gate de Validação).
+  - `workspace/.discovery/<iniciativa>/as-is-knowledge/`: Comportamento As-Is verificado no código.
+  - `workspace/.discovery/<iniciativa>/business-epic/`: Insumos de negócio e épico inicial.
+  - `workspace/.discovery/<iniciativa>/discovery-consolidation/`: Síntese de discovery.
+  - As demais saídas ficam nas pastas com o nome da etapa correspondente.
 
 ## Gate de Validação
 

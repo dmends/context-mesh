@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
+import { StepStatus } from '../domain/status.mjs';
 
 const cliPath = fileURLToPath(new URL('./cli.mjs', import.meta.url));
 
@@ -19,6 +20,50 @@ describe('cli.mjs', () => {
     const result = spawnSync(process.execPath, [cliPath], { encoding: 'utf8' });
     assert.equal(result.status, 0);
     assert.match(result.stdout, /Usage:/);
+  });
+
+  it('initializes an initiative and first theme without source files', (t) => {
+    const workspace = mkdtempSync(join(tmpdir(), 'smith-cli-init-'));
+    t.after(() => rmSync(workspace, { recursive: true, force: true }));
+    const args = [
+      cliPath,
+      'init',
+      '--workspace', workspace,
+      '--run-id', 'saft-orchestration',
+      '--tema', 'Cadastro e ciclo de vida',
+    ];
+
+    const result = spawnSync(process.execPath, args, { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    const initialized = JSON.parse(result.stdout);
+    assert.equal(initialized.runId, 'saft-orchestration');
+    assert.equal(initialized.tema, 'Cadastro e ciclo de vida');
+    assert.equal(initialized.nodeId, 'cadastro-e-ciclo-de-vida');
+    assert.ok(initialized.steps.every(({ status }) => status === StepStatus.PENDING));
+    for (const directory of [
+      'workspace/.discovery/saft-orchestration/as-is-knowledge',
+      'workspace/.discovery/saft-orchestration/business-epic',
+      'workspace/.discovery/saft-orchestration/decision-record',
+      'workspace/.discovery/saft-orchestration/discovery-consolidation',
+      'workspace/.discovery/saft-orchestration/story-task-breakdown',
+      'workspace/.discovery/saft-orchestration/tech-solution-specification',
+      'workspace/.discovery/saft-orchestration/technical-refinement',
+      'workspace/.discovery/saft-orchestration/validation-gate',
+    ]) {
+      assert.equal(existsSync(join(workspace, directory)), true, `${directory} should be created`);
+    }
+    for (const obsoleteDirectory of ['input', 'results', 'plans']) {
+      assert.equal(
+        existsSync(join(workspace, 'workspace/.discovery/saft-orchestration', obsoleteDirectory)),
+        false,
+        `${obsoleteDirectory} should not be created`,
+      );
+    }
+
+    const persisted = JSON.parse(readFileSync(join(workspace, '.smith/runs/saft-orchestration.json'), 'utf8'));
+    assert.equal(persisted.schemaVersion, 1);
+    assert.deepEqual(persisted.sources, []);
+    assert.equal(persisted.nodes[0].tema, initialized.tema);
   });
 
   it('supports source catalog operations from JSON stdin', (t) => {

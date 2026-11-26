@@ -30,6 +30,11 @@ test('installs a local workflow viewer without overwriting existing files', asyn
   assert.equal(installed.viewerStatus, 'installed');
   assert.match(readFileSync(viewer, 'utf8'), /type="file"/);
   assert.doesNotMatch(readFileSync(viewer, 'utf8'), /__WORKFLOW_STEPS__/);
+  const readme = readFileSync(join(options.targetRoot, '.smith/README.md'), 'utf8');
+  assert.match(readme, /Pergunte ao usuário qual será o nome da iniciativa \(`--run-id`\)/);
+  assert.match(readme, /Pergunte qual é o primeiro tema de negócio \(`--tema`\)/);
+  assert.match(readme, /workspace\/\.discovery\/<run-id>\/business-epic\//);
+  assert.ok(readme.includes(readFileSync(join(options.sourceRoot, 'instructions/initial-project.md'), 'utf8').trim()));
   assert.equal((await initializePlugin(options)).viewerStatus, 'unchanged');
   writeFileSync(viewer, 'custom user content');
   await assert.rejects(initializePlugin(options), /viewer.*conflict/i);
@@ -46,6 +51,27 @@ test('refreshes an unchanged viewer when the packaged viewer changes', async (t)
   assert.equal(readFileSync(first.viewerPath, 'utf8'), original);
   assert.equal((await initializePlugin(options)).viewerStatus, 'updated');
   assert.match(readFileSync(first.viewerPath, 'utf8'), /new version/);
+});
+
+test('force atualiza visualizador antigo sem marcadores atuais', async (t) => {
+  const options = await fixture(t);
+  const first = await initializePlugin(options);
+  const oldViewer = readFileSync(first.viewerPath, 'utf8')
+    .replace(/; const initialProjectPrompt = [\s\S]*(?=<\/script>)/, '');
+  writeFileSync(first.viewerPath, oldViewer);
+
+  const result = spawnSync(process.execPath, [
+    join(options.sourceRoot, 'installer/init.mjs'),
+    '--target', options.targetRoot,
+    '--shared-root', options.sharedRoot,
+    '--client', 'jetbrains',
+    '--agent', 'copilot',
+    '--force',
+  ], { encoding: 'utf8' });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).viewerStatus, 'updated');
+  assert.match(readFileSync(first.viewerPath, 'utf8'), /const initialProjectPrompt = "# Iniciar Smith/);
 });
 
 test('refuses symlinks in the viewer destination before installation', async (t) => {
@@ -109,7 +135,7 @@ test('IntelliJ and VS Code use one runtime with nine prompts per project', async
       shell: true, cwd: target, encoding: 'utf8', input: JSON.stringify({ 'business-epic': document }),
     });
     assert.equal(publish.status, 0, publish.stderr);
-    assert.equal(readFileSync(join(target, 'workspace/.discovery/fixture/results/business-epic/001-teste.md'), 'utf8'), document);
+    assert.equal(readFileSync(join(target, 'workspace/.discovery/fixture/business-epic/001-teste.md'), 'utf8'), document);
   }
 });
 
@@ -150,6 +176,35 @@ test('shared runtime reinstall refuses unknown entries and symlinks', async (t) 
   rmSync(unknown, { recursive: true });
   symlinkSync(join(options.sourceRoot, 'README.md'), unknown);
   await assert.rejects(initializePlugin(options), /symlink/i);
+});
+
+test('force removes known retired runtime directories during shared runtime refresh', async (t) => {
+  const options = await fixture(t);
+  const first = await initializePlugin(options);
+  const retiredFile = join(first.installPath, 'report/prototipe/old-preview.html');
+  mkdirSync(join(first.installPath, 'report/prototipe'), { recursive: true });
+  writeFileSync(retiredFile, '<!doctype html>');
+  const retiredSkill = join(first.installPath, 'agents/antigravity/skills/initial-project/SKILL.md');
+  mkdirSync(join(first.installPath, 'agents/antigravity/skills/initial-project'), { recursive: true });
+  writeFileSync(retiredSkill, '# Obsolete skill');
+
+  await assert.rejects(initializePlugin(options), /unexpected directory/i);
+  assert.equal(existsSync(retiredFile), true);
+  assert.equal(existsSync(retiredSkill), true);
+
+  const result = spawnSync(process.execPath, [
+    join(options.sourceRoot, 'installer/init.mjs'),
+    '--target', options.targetRoot,
+    '--shared-root', options.sharedRoot,
+    '--client', 'jetbrains',
+    '--agent', 'copilot',
+    '--force',
+  ], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).runtimeStatus, 'reinstalled');
+  assert.equal(existsSync(retiredFile), false);
+  assert.equal(existsSync(retiredSkill), false);
+  assert.equal(existsSync(join(first.installPath, 'report/prototipe')), false);
 });
 
 test('upgrade replaces only known legacy prompts and retires only verified runtime files', async (t) => {

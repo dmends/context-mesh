@@ -31,7 +31,7 @@ Consulte `sources list` antes de explorar. Se o usuário indicar uma fonte local
 node .copilot/plugins/smith/core/cli.mjs ready --workspace . --run-id <run-id> --tema "<tema>" --input <arquivo-fonte> [--input <outro-arquivo-fonte>...]
 ```
 
-Confirme que `as-is-knowledge` aparece em `readySteps`. Se não aparecer, explique o bloqueio e não gere nem registre a saída. Localize o endpoint e examine o código que implementa a rota: handler, desserialização, validações e mapeamento de resposta. Use somente fatos comprováveis no código; documente método HTTP, rota, headers, parâmetros de rota e query, campos do corpo da requisição, regras de validação em ordem de aplicação, e respostas para cada cenário observado. Salve o documento em `workspace/.discovery/<run-id>/results/as-is-knowledge/`, sem sobrescrever arquivos existentes.
+Confirme que `as-is-knowledge` aparece em `readySteps`. Se não aparecer, explique o bloqueio e não gere nem registre a saída. Localize o endpoint e examine o código que implementa a rota: handler, desserialização, validações e mapeamento de resposta. Use somente fatos comprováveis no código; documente método HTTP, rota, headers, parâmetros de rota e query, campos do corpo da requisição, regras de validação em ordem de aplicação, e respostas para cada cenário observado. Salve o documento em `workspace/.discovery/<run-id>/as-is-knowledge/`, sem sobrescrever arquivos existentes.
 
 A única gravação de documentos permitida é via `publish`. Consulte `outputDirectory` em `ready`; não invente um destino.
 
@@ -40,5 +40,5 @@ Não entregue o documento apenas na conversa. Só conclua depois que `publish` t
 Depois que o arquivo existir, registre seu caminho relativo à raiz do projeto:
 
 ```bash
-node .copilot/plugins/smith/core/cli.mjs complete --workspace . --run-id <run-id> --tema "<tema>" --step as-is-knowledge --artifact knowledge=workspace/.discovery/<run-id>/results/as-is-knowledge/<arquivo>.md --input <arquivo-fonte> [--input <outro-arquivo-fonte>...]
+node .copilot/plugins/smith/core/cli.mjs complete --workspace . --run-id <run-id> --tema "<tema>" --step as-is-knowledge --artifact knowledge=workspace/.discovery/<run-id>/as-is-knowledge/<arquivo>.md --input <arquivo-fonte> [--input <outro-arquivo-fonte>...]
 ```

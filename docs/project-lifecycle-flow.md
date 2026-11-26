@@ -7,6 +7,8 @@ O workflow é dividido em duas fases separadas por um **gate de aprovação huma
 - **Upstream** (etapas 1–5): da descoberta bruta ao pacote validado pelo PO
 - **Downstream** (etapas 6–7): da especificação aprovada à execução
 
+Ao executar `cli.mjs init --run-id <iniciativa> --tema <tema>`, o CLI cria uma pasta para cada etapa diretamente em `workspace/.discovery/<iniciativa>/`. Insumos e artefatos de cada etapa ficam juntos na pasta correspondente.
+
 ```
 UPSTREAM
   Etapa 1           ┌─────────────────────────────┐
@@ -57,11 +59,10 @@ DOWNSTREAM
 **Objetivo:** Transformar insumos não estruturados (transcrições e histórias) em uma versão inicial do épico de negócio. Não é decisão — é rascunho para confronto com a realidade técnica.
 
 **Entradas:**
-- `workspace/.discovery/<iniciativa>/input/transcripts/` — transcrições de agendas e reuniões
-- `workspace/.discovery/<iniciativa>/input/business-stories/` — histórias de negócio e requisitos
+- `workspace/.discovery/<iniciativa>/business-epic/` — transcrições, histórias de negócio e o épico
 
 **Saída:** `business-epic`
-**Pasta:** `workspace/.discovery/<iniciativa>/results/business-epic/`
+**Pasta:** `workspace/.discovery/<iniciativa>/business-epic/`
 
 **Sub-etapas:**
 1. Leitura integral de todas as transcrições
@@ -87,7 +88,7 @@ DOWNSTREAM
 O catálogo de fontes é mantido pelo CLI (`sources add|update|remove|list`). Não é necessário criar pastas `legado/` ou `refatorado/`; cada repositório pode manter seu nome natural em `workspace/src/`.
 
 **Saída:** `knowledge`
-**Pasta:** `workspace/.knowledge/`
+**Pasta:** `workspace/.discovery/<iniciativa>/as-is-knowledge/`
 
 **Sub-etapas:**
 1. Análise dos contratos de API existentes (entradas, saídas, erros)
@@ -107,12 +108,13 @@ O catálogo de fontes é mantido pelo CLI (`sources add|update|remove|list`). N�
 **Objetivo:** Confrontar o épico inicial com as fronteiras técnicas reais e produzir o documento Consolidado. Inclui mapeamento de dependências, riscos e classificação de porte da demanda (XS/S/M/L/XL) com nível de clareza.
 
 **Entradas:**
-- `workspace/.discovery/<iniciativa>/results/business-epic/` — épico inicial (Etapa 1)
-- `workspace/.knowledge/` — knowledge As-Is (Etapa 2)
+- `workspace/.discovery/<iniciativa>/business-epic/` — épico inicial (Etapa 1)
+- `workspace/.discovery/<iniciativa>/as-is-knowledge/` — knowledge As-Is (Etapa 2)
+- `workspace/.knowledge/` — materiais de knowledge existentes, quando aplicável
 - `workspace/.context/` — contexto comum da iniciativa
 
 **Saída:** `discovery-consolidation`
-**Pasta:** `workspace/.discovery/<iniciativa>/results/consolidation/`
+**Pasta:** `workspace/.discovery/<iniciativa>/discovery-consolidation/`
 
 **Sub-etapas:**
 1. Leitura do épico inicial e do knowledge As-Is
@@ -143,12 +145,12 @@ O catálogo de fontes é mantido pelo CLI (`sources add|update|remove|list`). N�
 **Objetivo:** A partir do Consolidado e do ARD (Architecture Decision Record) elaborado pelo arquiteto, produzir a especificação de solução técnica com estimativa de porte.
 
 **Entradas:**
-- `workspace/.discovery/<iniciativa>/results/consolidation/` — Consolidado (Etapa 3)
-- `workspace/.discovery/<iniciativa>/input/solution/` — ARD do arquiteto
+- `workspace/.discovery/<iniciativa>/discovery-consolidation/` — Consolidado (Etapa 3)
+- `workspace/.discovery/<iniciativa>/tech-solution-specification/` — ARD do arquiteto
 - `workspace/.context/` — contexto comum
 
 **Saída:** `tech-solution-specification`
-**Pasta:** `workspace/.discovery/<iniciativa>/results/tech-solution-specification/`
+**Pasta:** `workspace/.discovery/<iniciativa>/tech-solution-specification/`
 
 ---
 
@@ -163,7 +165,7 @@ O catálogo de fontes é mantido pelo CLI (`sources add|update|remove|list`). N�
 - Escolhas explicitamente adotadas pelo time (negócio + arquitetura)
 
 **Saída:** `decision-record`
-**Pasta:** `workspace/.discovery/<iniciativa>/results/decisions/`
+**Pasta:** `workspace/.discovery/<iniciativa>/decision-record/`
 
 #### Gate de Validação
 **Step ID:** `validation-gate` (aprovação, sem artefato gerado)
@@ -173,6 +175,7 @@ O catálogo de fontes é mantido pelo CLI (`sources add|update|remove|list`). N�
 
 **Participantes:** PO + Especialistas (engenharia, arquitetura)
 **Critério:** Aprovação explícita dos três artefatos. Silêncio ou resposta ambígua não contam.
+**Pasta:** `workspace/.discovery/<iniciativa>/validation-gate/`
 
 ---
 
@@ -188,7 +191,7 @@ O catálogo de fontes é mantido pelo CLI (`sources add|update|remove|list`). N�
 - Consolidado, especificação e decisões aprovados
 
 **Saídas:** `story-task-breakdown` + `execution-plan`
-**Pasta:** `workspace/.discovery/<iniciativa>/input/plans/`
+**Pasta:** `workspace/.discovery/<iniciativa>/story-task-breakdown/`
 
 ---
 
@@ -199,7 +202,7 @@ O catálogo de fontes é mantido pelo CLI (`sources add|update|remove|list`). N�
 **Objetivo:** Detalhar cada história com critérios de aceite precisos e refinar tecnicamente as tasks para execução individual.
 
 **Saída:** `technical-refinement`
-**Pasta:** `workspace/.discovery/<iniciativa>/input/plans/`
+**Pasta:** `workspace/.discovery/<iniciativa>/technical-refinement/`
 
 ---
 
@@ -214,14 +217,14 @@ Com o plano refinado aprovado, o orquestrador distribui histórias individuais e
 
 | Step ID | Fase | Pré-requisitos | Artefato gerado | Pasta |
 |---|---|---|---|---|
-| `business-epic` | Upstream | — | `business-epic` | `results/business-epic/` |
-| `as-is-knowledge` | Upstream | — | `knowledge` | `.knowledge/` |
-| `discovery-consolidation` | Upstream | epic + knowledge | `discovery-consolidation` (com porte) | `results/consolidation/` |
-| `tech-solution-specification` | Upstream | consolidation | `tech-solution-specification` | `results/tech-solution-specification/` |
-| `decision-record` | Upstream | tech-solution-specification | `decision-record` | `results/decisions/` |
-| `validation-gate` | Gate | consolidation + spec + decisions | — (aprovação) | — |
-| `story-task-breakdown` | Downstream | validation-gate | `story-task-breakdown` + `execution-plan` | `input/plans/` |
-| `technical-refinement` | Downstream | story-task-breakdown | `technical-refinement` | `input/plans/` |
+| `business-epic` | Upstream | — | `business-epic` | `business-epic/` |
+| `as-is-knowledge` | Upstream | — | `knowledge` | `as-is-knowledge/` |
+| `discovery-consolidation` | Upstream | epic + knowledge | `discovery-consolidation` (com porte) | `discovery-consolidation/` |
+| `tech-solution-specification` | Upstream | consolidation | `tech-solution-specification` | `tech-solution-specification/` |
+| `decision-record` | Upstream | tech-solution-specification | `decision-record` | `decision-record/` |
+| `validation-gate` | Gate | consolidation + spec + decisions | — (aprovação) | `validation-gate/` |
+| `story-task-breakdown` | Downstream | validation-gate | `story-task-breakdown` + `execution-plan` | `story-task-breakdown/` |
+| `technical-refinement` | Downstream | story-task-breakdown | `technical-refinement` | `technical-refinement/` |
 
 ---
 
@@ -232,18 +235,12 @@ workspace/
 ├── .context/                              ← contexto comum (lido em todas as etapas)
 ├── .discovery/
 │   └── <iniciativa>/
-│       ├── input/
-│       │   ├── transcripts/               ← agendas e transcrições (Etapa 1)
-│       │   ├── business-stories/          ← histórias de negócio (Etapa 1)
-│       │   ├── solution/                  ← ARD do arquiteto (Etapa 4)
-│       │   └── plans/                     ← histórias, tasks e plano (Etapas 6 e 7)
-│       └── results/
-│           ├── business-epic/             ← épico inicial (Etapa 1)
-│           ├── consolidation/             ← consolidado com porte (Etapa 3)
-│           ├── tech-solution-specification/ ← especificação de solução (Etapa 4)
-│           └── decisions/                 ← registro de decisões (Etapa 5)
-└── .knowledge/                            ← knowledge As-Is (Etapa 2)
-    ├── legado/<iniciativa>/
-    ├── refatorado/<iniciativa>/
-    └── dominios/<iniciativa>/
+│       ├── as-is-knowledge/               ← knowledge As-Is (Etapa 2)
+│       ├── business-epic/                 ← insumos e épico inicial (Etapa 1)
+│       ├── decision-record/               ← registro de decisões (Etapa 5)
+│       ├── discovery-consolidation/        ← consolidado com porte (Etapa 3)
+│       ├── story-task-breakdown/           ← histórias, tasks e plano (Etapa 6)
+│       ├── tech-solution-specification/    ← ARD e especificação de solução (Etapa 4)
+│       ├── technical-refinement/           ← refinamento técnico (Etapa 7)
+│       └── validation-gate/                ← aprovação do pacote upstream
 ```

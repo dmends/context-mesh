@@ -1,5 +1,6 @@
 import { createInterface } from 'node:readline/promises';
-import { readFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WORKFLOW_STEPS } from '../workflows/project-lifecycle.mjs';
 import {
@@ -17,6 +18,7 @@ import { WorkflowError } from '../domain/errors.mjs';
 
 const USAGE = `Usage:
   node plugin/core/cli.mjs template --step ID
+  node plugin/core/cli.mjs init --run-id ID --tema TEMA
   node plugin/core/cli.mjs start|resume|status --run-id ID --tema TEMA --input PATH [--input PATH...]
   node plugin/core/cli.mjs ready --run-id ID --tema TEMA --input PATH [--input PATH...]
   node plugin/core/cli.mjs publish --run-id ID --tema TEMA --step ID --input PATH [--name SLUG] < documents.json
@@ -28,6 +30,34 @@ const USAGE = `Usage:
 
 All paths are relative to --workspace (default: current directory).`;
 
+function discoveryDirectories(runId) {
+  return WORKFLOW_STEPS.map(({ id }) => `workspace/.discovery/${runId}/${id}`);
+}
+
+async function createDiscoveryDirectories(workspaceRoot, runId) {
+  for (const relativePath of discoveryDirectories(runId)) {
+    let current = workspaceRoot;
+    for (const segment of relativePath.split('/')) {
+      current = join(current, segment);
+      let info;
+      try {
+        info = await lstat(current);
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+        try {
+          await mkdir(current);
+        } catch (mkdirError) {
+          if (mkdirError.code !== 'EEXIST') throw mkdirError;
+        }
+        info = await lstat(current);
+      }
+      if (info.isSymbolicLink() || !info.isDirectory()) {
+        throw new WorkflowError('INVALID_DISCOVERY_DIRECTORY', `Discovery path must be a real directory: ${current}`);
+      }
+    }
+  }
+}
+
 function parseArguments(args) {
   const [command, ...rest] = args;
   if (!command || command === '--help' || command === 'help') {
@@ -38,6 +68,35 @@ function parseArguments(args) {
       throw new WorkflowError('INVALID_ARGUMENT', 'template requires --step ID');
     }
     return { command, stepId: rest[1] };
+  }
+
+  if (command === 'init') {
+    const options = {};
+    const keys = new Map([
+      ['--workspace', 'workspaceRoot'],
+      ['--run-id', 'runId'],
+      ['--tema', 'tema'],
+    ]);
+    for (let index = 0; index < rest.length; index += 1) {
+      const option = rest[index];
+      const key = keys.get(option);
+      const value = rest[index + 1];
+      if (!key || !value || value.startsWith('--') || options[key] !== undefined) {
+        throw new WorkflowError('INVALID_ARGUMENT', `Invalid or repeated init option: ${option}`);
+      }
+      options[key] = value;
+      index += 1;
+    }
+    if (!options.runId || !options.tema) {
+      throw new WorkflowError('INVALID_ARGUMENT', 'init requires --run-id and --tema');
+    }
+    return {
+      command,
+      workspaceRoot: options.workspaceRoot ?? process.cwd(),
+      runId: options.runId,
+      tema: options.tema,
+      inputFiles: [],
+    };
   }
 
   if (command === 'sources') {
@@ -242,6 +301,18 @@ async function main() {
     tema: options.tema,
     inputFiles: options.inputFiles,
   };
+
+  if (options.command === 'init') {
+    const state = await readWorkflowRun(context);
+    await createDiscoveryDirectories(options.workspaceRoot, options.runId);
+    process.stdout.write(`${JSON.stringify({
+      runId: options.runId,
+      tema: state.tema,
+      nodeId: state.id,
+      steps: state.steps.map(({ type, status }) => ({ type, status })),
+    }, null, 2)}\n`);
+    return;
+  }
 
   if (options.command === 'publish') {
     if (process.stdin.isTTY) throw new WorkflowError('INVALID_ARGUMENT', 'Pipe a JSON object mapping artifact names to Markdown into publish');

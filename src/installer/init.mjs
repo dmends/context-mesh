@@ -21,6 +21,14 @@ const execFileAsync = promisify(execFile);
 const MIN_NODE_MAJOR = 22;
 const SUPPORTED_CLIENTS = new Set(['copilot-cli', 'jetbrains', 'vscode']);
 const SUPPORTED_AGENTS = new Set(['copilot', 'claude-code', 'cursor', 'gemini-cli', 'antigravity', 'codex']);
+const RETIRED_RUNTIME_DIRECTORIES = new Set([
+  'report/prototipe',
+  'agents/antigravity/skills/initial-project',
+  'agents/claude-code/.claude/skills/initial-project',
+  'agents/codex/.agents/skills/initial-project',
+  'agents/cursor/.cursor/skills/initial-project',
+  'agents/gemini-cli/.gemini/skills/initial-project',
+]);
 
 export const DEFAULT_WORKSPACE_DIRECTORIES = [
   'workspace/.context',
@@ -275,6 +283,19 @@ async function readInstructions(sourceRoot, pluginName) {
   return instructions.endsWith('\n') ? instructions : `${instructions}\n`;
 }
 
+async function readExistingInstructions(path) {
+  try {
+    const info = await lstat(path);
+    if (info.isSymbolicLink() || !info.isFile()) {
+      throw new Error(`Instructions destination is not a regular file: ${path}`);
+    }
+    return await readFile(path, 'utf8');
+  } catch (error) {
+    if (error.code === 'ENOENT') return undefined;
+    throw error;
+  }
+}
+
 const PREVIOUS_PLUGIN_VERSIONS = ['1.1.0', '1.2.0'];
 
 async function readPromptHistory(sourceRoot) {
@@ -372,13 +393,16 @@ async function installPromptWithoutOverwrite(targetRoot, promptPath, content, pr
   await atomicWrite(promptPath, content, { previous, changedMessage: `Prompt changed after preview: ${promptPath}` });
 }
 
-function renderViewer(template) {
+function renderViewer(template, initialProjectPrompt) {
   const marker = '__WORKFLOW_STEPS__';
   const statusMarker = '__STEP_STATUSES__';
-  if (template.split(marker).length !== 2 || template.split(statusMarker).length !== 2) {
+  const promptMarker = '__INITIAL_PROJECT_PROMPT__';
+  if ([marker, statusMarker, promptMarker].some((value) => template.split(value).length !== 2)) {
     throw new Error('Invalid workflow viewer template');
   }
-  const steps = WORKFLOW_STEPS.map(({ id, kind, requires, outputs }) => ({ id, ...(kind && { kind }), requires, outputs }));
+  const steps = WORKFLOW_STEPS.map(({ id, name, kind, requires, outputs, instructions, promptCommand, recommendedSources }) => ({
+    id, name, ...(kind && { kind }), requires, outputs, instructions, promptCommand, recommendedSources,
+  }));
   const presentation = {
     PENDING: { label: 'Pendente', className: 'waiting' },
     RUNNING: { label: 'Em andamento', className: 'active' },
@@ -394,10 +418,13 @@ function renderViewer(template) {
     { value, ...presentation[key] },
   ]));
   const safeJson = (value) => JSON.stringify(value).replaceAll('<', '\\u003c');
-  return Buffer.from(template.replace(marker, safeJson(steps)).replace(statusMarker, safeJson(statuses)));
+  return Buffer.from(template
+    .replace(marker, safeJson(steps))
+    .replace(statusMarker, safeJson(statuses))
+    .replace(promptMarker, safeJson(initialProjectPrompt)));
 }
 
-async function inspectViewer(target, source, destination, destinationExists, forceOverwrite = false) {
+async function inspectViewer(target, source, destination, destinationExists, forceOverwrite = false, initialProjectPrompt) {
   const segments = ['.smith', 'report', 'index.html'];
   const path = join(target, ...segments);
   const templatePath = join(source, 'report', 'index.html');
@@ -405,7 +432,7 @@ async function inspectViewer(target, source, destination, destinationExists, for
   if (templateInfo.isSymbolicLink() || !templateInfo.isFile()) {
     throw new Error(`Workflow viewer template must be a regular file: ${templatePath}`);
   }
-  const content = renderViewer(await readFile(templatePath, 'utf8'));
+  const content = renderViewer(await readFile(templatePath, 'utf8'), initialProjectPrompt);
   const cssPath = join(target, '.smith', 'report', 'workflow.css');
   const jsPath = join(target, '.smith', 'report', 'workflow.js');
   const [cssContent, jsContent] = await Promise.all([
@@ -433,14 +460,17 @@ async function inspectViewer(target, source, destination, destinationExists, for
     const info = await lstat(path);
     if (info.isSymbolicLink() || !info.isFile()) throw new Error(`Workflow viewer is not a regular file: ${path}`);
     const previous = await readFile(path);
-    if (previous.equals(content)) return { path, content, status: 'unchanged', css, js };
+    if (previous.equals(content) && css.status === 'unchanged' && js.status === 'unchanged') {
+      return { path, content, status: 'unchanged', css, js };
+    }
+    if (forceOverwrite) {
+      // Force must bypass parsing legacy viewer templates, which may not have current markers.
+      return { path, content, previous, status: 'update-planned', css, js };
+    }
     if (destinationExists) {
       try {
         const oldTemplate = await readFile(join(destination, 'report', 'index.html'), 'utf8');
-        if (previous.equals(renderViewer(oldTemplate))) {
-          return { path, content, previous, status: 'update-planned', css, js };
-        }
-        if (forceOverwrite) {
+        if (previous.equals(renderViewer(oldTemplate, initialProjectPrompt))) {
           return { path, content, previous, status: 'update-planned', css, js };
         }
         return { path, content, status: 'conflict', css, js };
@@ -469,7 +499,7 @@ async function installViewer(target, viewer) {
 
 const GENERATED_README_MARKER = '<!-- smith-generated -->\n';
 
-function renderReadme(pluginPath, version) {
+function renderReadme(pluginPath, version, initialProjectPrompt) {
   const home = homedir();
   const displayPath = pluginPath.startsWith(home + sep)
     ? `$HOME${pluginPath.slice(home.length)}`
@@ -486,17 +516,15 @@ function renderReadme(pluginPath, version) {
 \`\`\`
 workspace/
 ├── .context/                        ← contexto comum lido em discovery e especificação de solução
-├── .discovery/
-│   └── <iniciativa>/
-│       ├── input/
-│       │   ├── transcripts/         ← fontes de entrada para épico de negócio
-│       │   ├── business-stories/    ← fontes de entrada para épico de negócio
-│       │   └── plans/               ← quebra de histórias e plano de execução (downstream)
-│       └── results/
-│           ├── business-epic/            ← artefatos do épico de negócio
-│           ├── discovery/                ← artefatos do resultado de discovery
-│           ├── decisions/                ← artefatos do registro de decisão
-│           └── tech-solution-specification/ ← especificação de solução (upstream, pré-gate)
+├── .discovery/<iniciativa>/
+│   ├── as-is-knowledge/             ← etapa Knowledge As-Is
+│   ├── business-epic/               ← insumos e épico inicial
+│   ├── decision-record/             ← decisões adotadas
+│   ├── discovery-consolidation/     ← consolidado de discovery
+│   ├── story-task-breakdown/        ← histórias, tasks e plano
+│   ├── tech-solution-specification/ ← ARD e especificação de solução
+│   ├── technical-refinement/        ← refinamento técnico
+│   └── validation-gate/             ← aprovação explícita
 └── .knowledge/
     ├── legado/
     │   └── <iniciativa>/            ← knowledge As-Is (legado)
@@ -535,8 +563,7 @@ run-id: minha-iniciativa
 tema: Nome do Tema
 
 fontes:
-- workspace/.discovery/minha-iniciativa/.input/.transcripts
-- workspace/.discovery/minha-iniciativa/.input/business-stories
+- workspace/.discovery/minha-iniciativa/business-epic
 \`\`\`
 
 **Knowledge As-Is**
@@ -561,7 +588,7 @@ run-id: minha-iniciativa
 tema: Nome do Tema
 
 fontes:
-- workspace/.discovery/minha-iniciativa/.input
+- workspace/.discovery/minha-iniciativa/business-epic
 - workspace/.knowledge
 - workspace/src
 \`\`\`
@@ -575,7 +602,7 @@ run-id: minha-iniciativa
 tema: Nome do Tema
 
 fontes:
-- workspace/.discovery/minha-iniciativa/results
+- workspace/.discovery/minha-iniciativa/decision-record
 \`\`\`
 
 **Gate de validação**
@@ -617,6 +644,19 @@ ${cmd('core/cli.mjs')} template --step business-epic
 
 Steps disponíveis: \`discovery-consolidation\`, \`as-is-knowledge\`, \`business-epic\`, \`tech-solution-specification\`, \`decision-record\`, \`story-task-breakdown\`, \`technical-refinement\`
 
+### Iniciar iniciativa e primeiro tema
+
+O comando \`init\` cria o estado Schema 1 sem exigir arquivos de fonte. Use-o depois de definir o identificador da iniciativa e o primeiro tema:
+
+\`\`\`bash
+\${cmd('core/cli.mjs')} init \\
+  --workspace . \\
+  --run-id <run-id> \\
+  --tema "<tema>"
+\`\`\`
+
+O comando não executa uma etapa do workflow. Adicione e confirme as fontes antes de iniciar o épico de negócio.
+
 ### Consultar status de uma execução
 
 \`\`\`bash
@@ -624,7 +664,7 @@ ${cmd('core/cli.mjs')} status \\
   --workspace . \\
   --run-id <run-id> \\
   --tema "<tema>" \\
-  --input workspace/.discovery/<run-id>/.input/<arquivo>.md
+  --input workspace/.discovery/<run-id>/business-epic/<arquivo>.md
 \`\`\`
 
 \`start\` e \`resume\` são sinônimos de \`status\` e criam o estado da execução se ele ainda não existir.
@@ -636,7 +676,7 @@ ${cmd('core/cli.mjs')} ready \\
   --workspace . \\
   --run-id <run-id> \\
   --tema "<tema>" \\
-  --input workspace/.discovery/<run-id>/.input/<arquivo>.md
+  --input workspace/.discovery/<run-id>/business-epic/<arquivo>.md
 \`\`\`
 
 ### Publicar artefatos de um step
@@ -649,7 +689,7 @@ ${cmd('core/cli.mjs')} publish \\
   --run-id <run-id> \\
   --tema "<tema>" \\
   --step business-epic \\
-  --input workspace/.discovery/<run-id>/.input/<arquivo>.md \\
+  --input workspace/.discovery/<run-id>/business-epic/<arquivo>.md \\
   << 'EOF'
 {"business-epic": "# Épico\\n\\n...conteúdo completo em Markdown..."}
 EOF
@@ -665,8 +705,8 @@ ${cmd('core/cli.mjs')} complete \\
   --run-id <run-id> \\
   --tema "<tema>" \\
   --step business-epic \\
-  --artifact business-epic=workspace/.discovery/<run-id>/results/001-<tema>.md \\
-  --input workspace/.discovery/<run-id>/.input/<arquivo>.md
+  --artifact business-epic=workspace/.discovery/<run-id>/business-epic/001-<tema>.md \\
+  --input workspace/.discovery/<run-id>/business-epic/<arquivo>.md
 \`\`\`
 
 ### Aprovar o gate de validação
@@ -677,14 +717,14 @@ ${cmd('core/cli.mjs')} ready \\
   --workspace . \\
   --run-id <run-id> \\
   --tema "<tema>" \\
-  --input workspace/.discovery/<run-id>/.input/<arquivo>.md
+  --input workspace/.discovery/<run-id>/business-epic/<arquivo>.md
 
 # Em seguida, aprove com o fingerprint retornado:
 ${cmd('core/cli.mjs')} approve \\
   --workspace . \\
   --run-id <run-id> \\
   --tema "<tema>" \\
-  --input workspace/.discovery/<run-id>/.input/<arquivo>.md \\
+  --input workspace/.discovery/<run-id>/business-epic/<arquivo>.md \\
   --approval-fingerprint <sha256-do-ready> \\
   --confirmation APPROVE
 \`\`\`
@@ -746,6 +786,8 @@ ${cmd('mcp/configure.mjs')} \\
   [--include-multicli] \\
   [--dry-run]
 \`\`\`
+
+${initialProjectPrompt.replaceAll('{{project-name}}', '<nome-do-projeto>').trim()}
 
 ## Visualizador de Execuções
 
@@ -845,6 +887,9 @@ async function assertReplaceableRuntime(source, destination, files, manifest, { 
     if (entry.isDirectory()) {
       allowedDirectories.add(relative(source, join(entry.parentPath, entry.name)).split(sep).join('/'));
     }
+  }
+  if (forceOverwrite) {
+    for (const directory of RETIRED_RUNTIME_DIRECTORIES) allowedDirectories.add(directory);
   }
   const installedFiles = await collectFiles(destination, destination, [], allowedDirectories);
   if (!installedFiles.includes('plugin.json')) {
@@ -1324,6 +1369,7 @@ export async function initializePlugin({
   const destination = shared ? sharedDestination(manifest.version, sharedRoot) : join(target, '.copilot', 'plugins', manifest.name);
   const readmePluginPath = shared ? destination : join('.copilot', 'plugins', manifest.name);
   const command = shared ? workflowCommand(manifest.version, sharedRoot) : undefined;
+  const initialProjectPrompt = await readFile(join(source, 'instructions', 'initial-project.md'), 'utf8');
   const promptHistory = shared ? await readPromptHistory(source) : undefined;
   const packageInstructions = await readInstructions(source, manifest.name);
   const instructionCandidates = [
@@ -1369,7 +1415,37 @@ export async function initializePlugin({
       .replaceAll('plugin/workflows/', `${runtimePrefix}/workflows/`);
   }
   const instructions = shared ? workflowProjectInstructions : packageInstructions;
-  const instructionsPath = join(target, '.github', 'instructions', `${manifest.name}.instructions.md`);
+  const copilotInstructionsPath = join(target, '.github', 'copilot-instructions.md');
+  const supplementalInstructionsPath = join(
+    target,
+    '.github',
+    'instructions',
+    `${manifest.name}.instructions.md`,
+  );
+  const existingSupplement = instructions === undefined
+    ? undefined
+    : await readExistingInstructions(supplementalInstructionsPath);
+  const existingProjectInstructions = instructions === undefined
+    ? undefined
+    : await readExistingInstructions(copilotInstructionsPath);
+  const supplementIsSmithManaged = existingSupplement !== undefined &&
+    (
+      existingSupplement === instructions ||
+      existingSupplement === packageInstructions ||
+      (shared && /<!-- Smith Plugin v[\s\S]*? -->/.test(existingSupplement))
+    );
+  const projectInstructionsAreSmithManaged = existingProjectInstructions !== undefined &&
+    (
+      existingProjectInstructions === instructions ||
+      existingProjectInstructions === packageInstructions ||
+      (shared && /<!-- Smith Plugin v[\s\S]*? -->/.test(existingProjectInstructions))
+    );
+  const instructionsPath = (
+    (existingProjectInstructions !== undefined && !projectInstructionsAreSmithManaged) ||
+    (existingSupplement !== undefined && !supplementIsSmithManaged)
+  )
+    ? supplementalInstructionsPath
+    : copilotInstructionsPath;
   const promptAssets = shared
     ? await readJetBrainsPromptAssets(source, command, promptHistory)
     : [];
@@ -1379,7 +1455,12 @@ export async function initializePlugin({
   await assertNoSymlinkPath(target, ['.copilot', 'plugins', manifest.name]);
   if (shared) await assertSharedPath(source, target, destination);
   if (instructions !== undefined) {
-    await assertNoSymlinkPath(target, ['.github', 'instructions', `${manifest.name}.instructions.md`]);
+    await assertNoSymlinkPath(
+      target,
+      instructionsPath === copilotInstructionsPath
+        ? ['.github', 'copilot-instructions.md']
+        : ['.github', 'instructions', `${manifest.name}.instructions.md`],
+    );
   }
 
   let destinationExists = false;
@@ -1395,8 +1476,8 @@ export async function initializePlugin({
     }
   }
 
-  let viewer = await inspectViewer(target, source, destination, destinationExists, forceOverwrite);
-  let readme = await inspectReadme(target, renderReadme(readmePluginPath, manifest.version));
+  let viewer = await inspectViewer(target, source, destination, destinationExists, forceOverwrite, initialProjectPrompt);
+  let readme = await inspectReadme(target, renderReadme(readmePluginPath, manifest.version, initialProjectPrompt));
   let reinstallRuntime = false;
   if (destinationExists) {
     if (shared) await assertReplaceableRuntime(source, destination, files, manifest, { forceOverwrite });
@@ -1540,8 +1621,8 @@ export async function initializePlugin({
 
   let status = 'unchanged';
   const changedFiles = [];
-  viewer = await inspectViewer(target, source, destination, destinationExists, forceOverwrite);
-  readme = await inspectReadme(target, renderReadme(readmePluginPath, manifest.version));
+  viewer = await inspectViewer(target, source, destination, destinationExists, forceOverwrite, initialProjectPrompt);
+  readme = await inspectReadme(target, renderReadme(readmePluginPath, manifest.version, initialProjectPrompt));
   if (!destinationExists || reinstallRuntime) {
     const parent = dirname(destination);
     if (shared) await assertSharedPath(source, target, destination);
@@ -1556,7 +1637,7 @@ export async function initializePlugin({
       await cp(source, temporary, { recursive: true, errorOnExist: true, force: false });
       if (reinstallRuntime) {
         await assertSharedPath(source, target, destination);
-        await assertReplaceableRuntime(source, destination, files, manifest);
+        await assertReplaceableRuntime(source, destination, files, manifest, { forceOverwrite });
         await rename(destination, backup);
       }
       try {
@@ -1592,7 +1673,12 @@ export async function initializePlugin({
     const previous = replaceInstructions ? Buffer.from(originalInstructions, 'utf8') : undefined;
     try {
       await mkdir(dirname(instructionsPath), { recursive: true });
-      await assertNoSymlinkPath(target, ['.github', 'instructions', `${manifest.name}.instructions.md`]);
+      await assertNoSymlinkPath(
+        target,
+        instructionsPath === copilotInstructionsPath
+          ? ['.github', 'copilot-instructions.md']
+          : ['.github', 'instructions', `${manifest.name}.instructions.md`],
+      );
       await atomicWrite(instructionsPath, instructions, { previous, changedMessage: `Instructions changed after preview: ${instructionsPath}` });
       status = 'installed';
       changedFiles.push(instructionsPath);

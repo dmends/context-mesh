@@ -4,11 +4,15 @@ export const WORKFLOW_STEPS = Object.freeze([
   {
     id: 'business-epic',
     name: 'Épico de Negócio',
+    promptCommand: '/Smith: Épico de negócio',
+    recommendedSources: [
+      'workspace/.discovery/<iniciativa>/business-epic/',
+    ],
     inputs: [],
     sourceRoles: ['documentation'],
     requires: [],
     outputs: ['business-epic'],
-    outputDirectory: 'workspace/.discovery/<iniciativa>/results/business-epic',
+    outputDirectory: 'workspace/.discovery/<iniciativa>/business-epic',
     templates: ['templates/004-business-epic.md'],
     instructions:
       'A partir das transcrições de agendas e histórias de negócio, produza a versão inicial do épico. ' +
@@ -18,12 +22,19 @@ export const WORKFLOW_STEPS = Object.freeze([
   {
     id: 'as-is-knowledge',
     name: 'Knowledge As-Is',
+    promptCommand: '/Smith: Knowledge As-Is',
+    recommendedSources: [
+      'fontes cadastradas com papel legacy ou reference',
+      'workspace/src/',
+      'workspace/.knowledge/',
+      'workspace/.discovery/<iniciativa>/as-is-knowledge/',
+    ],
     accumulative: true,
     inputs: [],
     sourceRoles: ['legacy', 'reference'],
     requires: [],
     outputs: ['knowledge'],
-    outputDirectory: 'workspace/.discovery/<iniciativa>/results/as-is-knowledge',
+    outputDirectory: 'workspace/.discovery/<iniciativa>/as-is-knowledge',
     templates: ['templates/000-knowledge-api.md', 'templates/001-knowledge-as-is.md'],
     instructions:
       'Descreva somente comportamento As-Is verificável no código. Separe legado, ' +
@@ -32,16 +43,23 @@ export const WORKFLOW_STEPS = Object.freeze([
   {
     id: 'discovery-consolidation',
     name: 'Consolidado de Discovery',
+    promptCommand: '/Smith: Consolidado',
+    recommendedSources: [
+      'workspace/.discovery/<iniciativa>/business-epic/',
+      'workspace/.discovery/<iniciativa>/as-is-knowledge/',
+      'workspace/.knowledge/',
+      'workspace/.context/',
+    ],
     inputs: [
-      'workspace/.discovery/<iniciativa>/results/business-epic/',
-      'workspace/.discovery/<iniciativa>/results/as-is-knowledge/',
+      'workspace/.discovery/<iniciativa>/business-epic/',
+      'workspace/.discovery/<iniciativa>/as-is-knowledge/',
       'workspace/.knowledge/',
       'workspace/.context/',
     ],
     sourceRoles: ['documentation'],
     requires: ['business-epic', 'as-is-knowledge'],
     outputs: ['discovery-consolidation'],
-    outputDirectory: 'workspace/.discovery/<iniciativa>/results/consolidation',
+    outputDirectory: 'workspace/.discovery/<iniciativa>/discovery-consolidation',
     templates: ['templates/002-discovery-result.md'],
     instructions:
       'A partir do épico inicial e do knowledge As-Is, produza o documento Consolidado. ' +
@@ -52,15 +70,22 @@ export const WORKFLOW_STEPS = Object.freeze([
   {
     id: 'tech-solution-specification',
     name: 'Especificação Técnica',
+    promptCommand: '/Smith: Especificação de Solução',
+    recommendedSources: [
+      'workspace/.discovery/<iniciativa>/discovery-consolidation/',
+      'workspace/.discovery/<iniciativa>/tech-solution-specification/',
+      'workspace/.context/',
+      'fontes cadastradas com papel target, reference ou integration',
+    ],
     inputs: [
-      'workspace/.discovery/<iniciativa>/results/consolidation/',
-      'workspace/.discovery/<iniciativa>/input/solution/',
+      'workspace/.discovery/<iniciativa>/discovery-consolidation/',
+      'workspace/.discovery/<iniciativa>/tech-solution-specification/',
       'workspace/.context/',
     ],
     sourceRoles: ['target', 'reference', 'integration', 'documentation'],
     requires: ['discovery-consolidation'],
     outputs: ['tech-solution-specification'],
-    outputDirectory: 'workspace/.discovery/<iniciativa>/results/tech-solution-specification',
+    outputDirectory: 'workspace/.discovery/<iniciativa>/tech-solution-specification',
     templates: ['templates/005-technical-specification.md'],
     instructions:
       'Produza a especificação de solução a partir do consolidado e do ARD do arquiteto. ' +
@@ -69,15 +94,21 @@ export const WORKFLOW_STEPS = Object.freeze([
   {
     id: 'decision-record',
     name: 'Registro de Decisões',
+    promptCommand: '/Smith: Registro de decisão',
+    recommendedSources: [
+      'workspace/.discovery/<iniciativa>/tech-solution-specification/',
+      'workspace/.discovery/<iniciativa>/decision-record/',
+      'decisões explicitamente aprovadas pelo time',
+    ],
     accumulative: true,
     inputs: [
-      'workspace/.discovery/<iniciativa>/results/tech-solution-specification/',
+      'workspace/.discovery/<iniciativa>/tech-solution-specification/',
       'escolhas explicitamente adotadas pelo time',
     ],
     sourceRoles: ['documentation'],
     requires: ['tech-solution-specification'],
     outputs: ['decision-record'],
-    outputDirectory: 'workspace/.discovery/<iniciativa>/results/decisions',
+    outputDirectory: 'workspace/.discovery/<iniciativa>/decision-record',
     templates: ['templates/003-decision-record.md'],
     instructions:
       'A partir da especificação de solução, registre somente as escolhas explicitamente adotadas pelo time (ADR). ' +
@@ -86,14 +117,21 @@ export const WORKFLOW_STEPS = Object.freeze([
   {
     id: 'validation-gate',
     name: 'Gate de Validação',
+    promptCommand: '/Smith: Gate de validação',
+    recommendedSources: [
+      'workspace/.discovery/<iniciativa>/discovery-consolidation/',
+      'workspace/.discovery/<iniciativa>/tech-solution-specification/',
+      'workspace/.discovery/<iniciativa>/decision-record/',
+    ],
     kind: 'approval',
     inputs: [
-      'workspace/.discovery/<iniciativa>/results/consolidation/',
-      'workspace/.discovery/<iniciativa>/results/tech-solution-specification/',
-      'workspace/.discovery/<iniciativa>/results/decisions/',
+      'workspace/.discovery/<iniciativa>/discovery-consolidation/',
+      'workspace/.discovery/<iniciativa>/tech-solution-specification/',
+      'workspace/.discovery/<iniciativa>/decision-record/',
     ],
     requires: ['discovery-consolidation', 'tech-solution-specification', 'decision-record'],
     outputs: [],
+    outputDirectory: 'workspace/.discovery/<iniciativa>/validation-gate',
     templates: [],
     instructions:
       'Solicite ao PO e especialistas aprovação explícita do consolidado, da especificação de solução e das decisões. ' +
@@ -102,14 +140,20 @@ export const WORKFLOW_STEPS = Object.freeze([
   {
     id: 'story-task-breakdown',
     name: 'Quebra de Histórias e Tasks',
+    promptCommand: '/Smith: Quebra de histórias e plano',
+    recommendedSources: [
+      'workspace/.discovery/<iniciativa>/business-epic/',
+      'workspace/.discovery/<iniciativa>/tech-solution-specification/',
+      'workspace/.discovery/<iniciativa>/decision-record/',
+    ],
     inputs: [
-      'workspace/.discovery/<iniciativa>/results/business-epic/',
-      'workspace/.discovery/<iniciativa>/results/tech-solution-specification/',
-      'workspace/.discovery/<iniciativa>/results/decisions/',
+      'workspace/.discovery/<iniciativa>/business-epic/',
+      'workspace/.discovery/<iniciativa>/tech-solution-specification/',
+      'workspace/.discovery/<iniciativa>/decision-record/',
     ],
     requires: ['validation-gate'],
     outputs: ['story-task-breakdown', 'execution-plan'],
-    outputDirectory: 'workspace/.discovery/<iniciativa>/input/plans',
+    outputDirectory: 'workspace/.discovery/<iniciativa>/story-task-breakdown',
     templates: [
       'templates/006-story-task-breakdown.md',
       'templates/007-execution-plan.md',
@@ -121,13 +165,18 @@ export const WORKFLOW_STEPS = Object.freeze([
   {
     id: 'technical-refinement',
     name: 'Refinamento Técnico',
+    promptCommand: '/Smith: Detalhamento técnico',
+    recommendedSources: [
+      'workspace/.discovery/<iniciativa>/story-task-breakdown/',
+      'workspace/.discovery/<iniciativa>/tech-solution-specification/',
+    ],
     inputs: [
-      'workspace/.discovery/<iniciativa>/input/plans/',
-      'workspace/.discovery/<iniciativa>/results/tech-solution-specification/',
+      'workspace/.discovery/<iniciativa>/story-task-breakdown/',
+      'workspace/.discovery/<iniciativa>/tech-solution-specification/',
     ],
     requires: ['story-task-breakdown'],
     outputs: ['technical-refinement'],
-    outputDirectory: 'workspace/.discovery/<iniciativa>/input/plans',
+    outputDirectory: 'workspace/.discovery/<iniciativa>/technical-refinement',
     templates: ['templates/008-knowledge-flow.md'],
     instructions:
       'Detalhe os critérios de aceite e o refinamento técnico de cada história. ' +
