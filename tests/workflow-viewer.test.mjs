@@ -103,9 +103,10 @@ async function viewer(options = {}) {
     .replace('__STEP_STATUSES__', JSON.stringify(stepStatuses))
     .replace('__INITIAL_PROJECT_PROMPT__', JSON.stringify(initialPrompt));
   const script = `${inlineScript}\n${js}`;
-  const ids = ['folder', 'choose-folder', 'restore-folder', 'refresh-folder', 'theme-toggle', 'initiative', 'message', 'notice', 'content', 'details', 'overlay'];
+  const ids = ['folder', 'choose-folder', 'restore-folder', 'refresh-folder', 'theme-toggle', 'initiative', 'initiative-trigger', 'initiative-options', 'message', 'notice', 'content', 'details', 'overlay'];
   const elements = Object.fromEntries(ids.map((id) => [id, new Element()]));
   elements.initiative.disabled = true;
+  elements['initiative-options'].hidden = true;
   const documentElement = new Element('html');
   const timers = [];
   let nextTimerId = 0;
@@ -243,6 +244,21 @@ test('Alterna e persiste o tema claro/escuro', async () => {
   values.set('smith-theme', 'dark');
   const darkTheme = await viewer({ localStorage: storage });
   assert.equal(darkTheme.documentElement.getAttribute('data-theme'), 'dark');
+});
+
+test('menu de iniciativas customizado abre e fecha no controle', async () => {
+  const elements = await viewer();
+  const trigger = elements['initiative-trigger'];
+  const options = elements['initiative-options'];
+  assert.equal(options.hidden, true);
+
+  trigger.listeners.click();
+  assert.equal(options.hidden, false);
+  assert.equal(trigger.attributes['aria-expanded'], 'true');
+
+  trigger.listeners.click();
+  assert.equal(options.hidden, true);
+  assert.equal(trigger.attributes['aria-expanded'], 'false');
 });
 
 test('projeto sem diretório de execuções mostra como iniciar sem erro', async () => {
@@ -469,5 +485,9 @@ test('viewer apresenta prompt de iniciação e continua sem permissão de escrit
   assert.match(js, /function findNode\(state, id\)/);
   assert.match(js, /function findStep\(node, type\)/);
   assert.match(css, /\.feedback-bar\s*\{[^}]*position:\s*fixed/s);
+  assert.match(css, /\[data-theme="dark"\][\s\S]*--bg-canvas:\s*#1e1f22/);
+  assert.match(css, /--border-focus:\s*#4a88c7/);
+  assert.match(css, /\.initiative-options\s*\{[^}]*position:\s*absolute/s);
+  assert.match(html, /id="initiative-trigger"[^>]*aria-haspopup="listbox"/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
 });

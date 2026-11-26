@@ -23,6 +23,8 @@ const notice = document.getElementById('notice');
 const content = document.getElementById('content');
 const details = document.getElementById('details');
 const overlay = document.getElementById('overlay');
+const initiativeTrigger = document.getElementById('initiative-trigger');
+const initiativeOptions = document.getElementById('initiative-options');
 const lastInitiativeKey = 'smith-last-initiative';
 const themeStorageKey = 'smith-theme';
 let directory;
@@ -778,6 +780,32 @@ async function selectInitiative() {
   }
 }
 
+function closeInitiativeOptions() {
+  initiativeOptions.hidden = true;
+  initiativeTrigger.setAttribute('aria-expanded', 'false');
+}
+
+function renderInitiativeOptions() {
+  initiativeOptions.textContent = '';
+  for (const file of files) {
+    const option = element('button', file.name, 'initiative-option');
+    option.type = 'button';
+    option.setAttribute('role', 'option');
+    option.setAttribute('aria-selected', String(file.name === initiative.value));
+    option.addEventListener('click', async () => {
+      initiative.value = file.name;
+      initiativeTrigger.textContent = file.name;
+      for (const item of initiativeOptions.children) {
+        item.setAttribute('aria-selected', String(item === option));
+      }
+      closeInitiativeOptions();
+      initiativeTrigger.focus();
+      await selectInitiative();
+    });
+    initiativeOptions.append(option);
+  }
+}
+
 async function showFiles(items, folderName) {
   files = items.filter((item) => /\.json$/i.test(item.name)).sort((a, b) => a.name.localeCompare(b.name));
   initiative.textContent = '';
@@ -788,8 +816,12 @@ async function showFiles(items, folderName) {
   detailSequence += 1;
   loadSequence += 1;
   initiative.disabled = files.length === 0;
+  initiativeTrigger.disabled = files.length === 0;
+  closeInitiativeOptions();
   if (!files.length) {
     initiative.append(element('option', 'Nenhum JSON encontrado'));
+    initiativeTrigger.textContent = 'Nenhum JSON encontrado';
+    renderInitiativeOptions();
     renderEmptyRuns(folderName);
     clearToasts(notice);
     return;
@@ -802,7 +834,47 @@ async function showFiles(items, folderName) {
   clearToasts(notice);
   const last = getLastInitiative();
   initiative.value = files.some((file) => file.name === last) ? last : files[0].name;
+  initiativeTrigger.textContent = initiative.value;
+  renderInitiativeOptions();
   await selectInitiative();
+}
+
+initiativeTrigger.addEventListener('click', () => {
+  const isOpen = initiativeOptions.hidden;
+  initiativeOptions.hidden = !isOpen;
+  initiativeTrigger.setAttribute('aria-expanded', String(isOpen));
+});
+
+initiativeTrigger.addEventListener('keydown', (event) => {
+  if (event.key === 'ArrowDown' && initiativeOptions.hidden) {
+    event.preventDefault();
+    initiativeOptions.hidden = false;
+    initiativeTrigger.setAttribute('aria-expanded', 'true');
+    initiativeOptions.querySelector('.initiative-option')?.focus();
+  }
+});
+
+initiativeOptions.addEventListener('keydown', (event) => {
+  const options = [...initiativeOptions.children];
+  const index = options.indexOf(event.target);
+  let nextIndex;
+  if (event.key === 'ArrowDown') nextIndex = Math.min(index + 1, options.length - 1);
+  if (event.key === 'ArrowUp') nextIndex = Math.max(index - 1, 0);
+  if (event.key === 'Home') nextIndex = 0;
+  if (event.key === 'End') nextIndex = options.length - 1;
+  if (nextIndex !== undefined) {
+    event.preventDefault();
+    options[nextIndex]?.focus();
+  } else if (event.key === 'Escape') {
+    closeInitiativeOptions();
+    initiativeTrigger.focus();
+  }
+});
+
+if (typeof document.addEventListener === 'function') {
+  document.addEventListener('click', (event) => {
+    if (!event.target.closest('.select-wrap')) closeInitiativeOptions();
+  });
 }
 
 async function readDirectory(handle) {
