@@ -157,10 +157,12 @@ async function loadOrCreateState(context) {
 
   let changed = false;
 
-  // Detect input file changes and invalidate non-accumulative completed steps
+  // Fingerprints are scoped to an input set because different steps may use different sources.
   if (context.inputFiles?.length > 0) {
+    const inputSet = computeInputSetFingerprint(context.inputFiles);
     const currentFingerprint = await computeInputFingerprint(context.workspaceRoot, context.inputFiles);
-    if (state.inputFingerprint && state.inputFingerprint !== currentFingerprint) {
+    const previousFingerprint = state.inputFingerprints?.[inputSet];
+    if (previousFingerprint && previousFingerprint !== currentFingerprint) {
       for (const step of WORKFLOW_STEPS) {
         const current = findStep(state, step.id);
         if (current?.status === StepStatus.COMPLETED && !step.accumulative && step.kind !== 'approval') {
@@ -169,8 +171,11 @@ async function loadOrCreateState(context) {
         }
       }
     }
-    if (state.inputFingerprint !== currentFingerprint) {
-      state.inputFingerprint = currentFingerprint;
+    if (previousFingerprint !== currentFingerprint) {
+      state.inputFingerprints = {
+        ...state.inputFingerprints,
+        [inputSet]: currentFingerprint,
+      };
       changed = true;
     }
   }
@@ -262,6 +267,12 @@ function validateState(state, context, filePath) {
         typeof node.tema !== 'string' || !node.tema || typeof node.createdAt !== 'string' ||
         typeof node.updatedAt !== 'string' || !Array.isArray(node.steps) ||
         nodeIds.has(node.id) || !Array.isArray(node.steps)) invalid('node fields');
+    if (node.inputFingerprints !== undefined &&
+        (!isRecord(node.inputFingerprints) ||
+         Object.entries(node.inputFingerprints).some(([key, value]) =>
+           !/^[a-f0-9]{64}$/.test(key) || !/^[a-f0-9]{64}$/.test(value)))) {
+      invalid(`input fingerprints for ${node.id}`);
+    }
     nodeIds.add(node.id);
     if (node.steps.length !== WORKFLOW_STEPS.length) invalid(`steps for ${node.id}`);
     const stepTypes = new Set();
@@ -527,6 +538,10 @@ function computeApprovalFingerprint(state, gate) {
     })
     .join('\n');
   return createHash('sha256').update(data).digest('hex');
+}
+
+function computeInputSetFingerprint(inputFiles) {
+  return createHash('sha256').update([...inputFiles].sort().join('\0')).digest('hex');
 }
 
 async function computeInputFingerprint(workspaceRoot, inputFiles) {

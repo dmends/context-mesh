@@ -21,18 +21,10 @@ const execFileAsync = promisify(execFile);
 const MIN_NODE_MAJOR = 22;
 const SUPPORTED_CLIENTS = new Set(['copilot-cli', 'jetbrains', 'vscode']);
 const SUPPORTED_AGENTS = new Set(['copilot', 'claude-code', 'cursor', 'gemini-cli', 'antigravity', 'codex']);
-const RETIRED_RUNTIME_DIRECTORIES = new Set([
-  'report/prototipe',
-  'agents/antigravity/skills/initial-project',
-  'agents/claude-code/.claude/skills/initial-project',
-  'agents/codex/.agents/skills/initial-project',
-  'agents/cursor/.cursor/skills/initial-project',
-  'agents/gemini-cli/.gemini/skills/initial-project',
-]);
-
 export const DEFAULT_WORKSPACE_DIRECTORIES = [
   'workspace/.context',
   'workspace/.discovery',
+  'workspace/.analysis',
   'workspace/.knowledge',
   'workspace/src',
 ];
@@ -97,7 +89,7 @@ Os arquivos de comando seguem o padrão \`.github/prompts/smith-*.prompt.md\` e 
 | \`/Smith: Gate de validação\` | \`.github/prompts/smith-validation-gate.prompt.md\` |
 | \`/Smith: Quebra de histórias e plano\` | \`.github/prompts/smith-story-task-breakdown.prompt.md\` |
 | \`/Smith: Detalhamento técnico\` | \`.github/prompts/smith-technical-refinement.prompt.md\` |
-| \`/Smith: Knowledge Flow\` | \`.github/prompts/smith-knowledge-flow.prompt.md\` |
+| \`/Smith: Analysis\` | \`.github/prompts/smith-analysis.prompt.md\` |
 | \`/Smith: Knowledge API\` | \`.github/prompts/smith-api-knowledge.prompt.md\` |
 
 Só leia esses arquivos quando o usuário invocar um dos comandos Smith.`;
@@ -113,7 +105,7 @@ const JETBRAINS_PROMPTS = [
   { source: '06-tech-solution-specification.prompt.md', destination: 'smith-tech-solution-specification.prompt.md' },
   { source: '07-story-task-breakdown.prompt.md', destination: 'smith-story-task-breakdown.prompt.md' },
   { source: '08-technical-refinement.prompt.md', destination: 'smith-technical-refinement.prompt.md' },
-  { source: '09-knowledge-flow.prompt.md', destination: 'smith-knowledge-flow.prompt.md' },
+  { source: '09-analysis.prompt.md', destination: 'smith-analysis.prompt.md' },
   { source: '10-api-knowledge.prompt.md', destination: 'smith-api-knowledge.prompt.md' },
 ];
 
@@ -136,14 +128,17 @@ async function physicalPath(path) {
   }
 }
 
-async function assertSharedPath(source, target, destination) {
+async function assertSharedPath(source, target, destination, allowSourceDestination = false) {
   const root = dirname(dirname(destination));
   await assertNoSymlinkPath(dirname(root), [basename(root), 'versions', basename(destination)]);
   const [physicalSource, physicalTarget, physicalDestination] = await Promise.all(
     [source, target, destination].map(physicalPath),
   );
   for (const project of [physicalSource, physicalTarget]) {
-    if (within(project, physicalDestination) || within(physicalDestination, project)) {
+    const sourceIsDestination = allowSourceDestination &&
+      project === physicalSource &&
+      physicalSource === physicalDestination;
+    if (!sourceIsDestination && (within(project, physicalDestination) || within(physicalDestination, project))) {
       throw new Error('Shared runtime must be outside the source and target projects');
     }
   }
@@ -194,20 +189,24 @@ async function assertNoSymlinkPath(targetRoot, segments) {
   }
 }
 
-async function collectFiles(root, current = root, files = [], allowedDirectories) {
+async function collectFiles(root, current = root, files = [], allowedDirectories, { allowUnknownDirectories = false, includeSymlinks = false } = {}) {
   const entries = await readdir(current, { withFileTypes: true });
   entries.sort((left, right) => left.name.localeCompare(right.name));
   for (const entry of entries) {
     const absolutePath = join(current, entry.name);
     const info = await lstat(absolutePath);
     if (info.isSymbolicLink()) {
+      if (includeSymlinks) {
+        files.push(relative(root, absolutePath).split(sep).join('/'));
+        continue;
+      }
       throw new Error(`Plugin source contains an unexpected symlink: ${absolutePath}`);
     }
     if (info.isDirectory()) {
-      if (allowedDirectories && !allowedDirectories.has(relative(root, absolutePath))) {
+      if (allowedDirectories && !allowedDirectories.has(relative(root, absolutePath)) && !allowUnknownDirectories) {
         throw new Error(`Installation conflict; unexpected directory at ${absolutePath}`);
       }
-      await collectFiles(root, absolutePath, files, allowedDirectories);
+      await collectFiles(root, absolutePath, files, allowedDirectories, { allowUnknownDirectories, includeSymlinks });
     } else if (info.isFile()) {
       files.push(relative(root, absolutePath).split(sep).join('/'));
     } else {
@@ -516,7 +515,7 @@ function renderReadme(pluginPath, version, initialProjectPrompt) {
 \`\`\`
 workspace/
 ├── .context/                        ← contexto comum lido em discovery e especificação de solução
-└── .discovery/<iniciativa>/
+├── .discovery/<iniciativa>/
     └── results/
         ├── as-is-knowledge/             ← etapa Knowledge As-Is
         ├── business-epic/               ← insumos e épico inicial
@@ -526,13 +525,14 @@ workspace/
         ├── tech-solution-specification/ ← ARD e especificação de solução
         ├── technical-refinement/        ← refinamento técnico
         └── validation-gate/             ← aprovação explícita
-└── .knowledge/
-    ├── legado/
-    │   └── <iniciativa>/            ← knowledge As-Is (legado)
-    ├── refatorado/
-    │   └── <iniciativa>/            ← knowledge As-Is (refatorado)
-    └── dominios/
-        └── <iniciativa>/            ← knowledge As-Is (domínios independentes)
+├── .knowledge/
+│   ├── legado/
+│   │   └── <iniciativa>/            ← knowledge As-Is (legado)
+│   ├── refatorado/
+│   │   └── <iniciativa>/            ← knowledge As-Is (refatorado)
+│   └── dominios/
+│       └── <iniciativa>/            ← knowledge As-Is (domínios independentes)
+└── .analysis/                       ← análises reutilizáveis de fluxos e funcionalidades
 \`\`\`
 
 O estado de cada execução fica em \`.smith/runs/<run-id>.json\`. O visualizador em \`.smith/report/index.html\` mostra o progresso, dependências e artefatos de todas as iniciativas.
@@ -697,7 +697,7 @@ ${cmd('core/cli.mjs')} publish \\
 EOF
 \`\`\`
 
-Para o step \`as-is-knowledge\`, adicione \`--knowledge-category legado|refatorado|dominios\`.
+O \`publish\` grava cada artefato no \`outputDirectory\` do step informado por \`ready\`. Para \`as-is-knowledge\`, o destino é \`workspace/.discovery/<run-id>/results/as-is-knowledge/\`; \`workspace/.knowledge/\` é apenas fonte de entrada.
 
 ### Registrar artefatos já existentes em disco
 
@@ -862,8 +862,11 @@ function matchesPluginPath(plugin, installPath, targetRoot) {
   );
 }
 
-async function treesMatch(sourceRoot, destination, files) {
-  const destinationFiles = await collectFiles(destination);
+async function treesMatch(sourceRoot, destination, files, allowUnknownEntries = false) {
+  const destinationFiles = await collectFiles(destination, destination, [], undefined, {
+    allowUnknownDirectories: allowUnknownEntries,
+    includeSymlinks: allowUnknownEntries,
+  });
   if (JSON.stringify(files) !== JSON.stringify(destinationFiles)) {
     return false;
   }
@@ -890,10 +893,10 @@ async function assertReplaceableRuntime(source, destination, files, manifest, { 
       allowedDirectories.add(relative(source, join(entry.parentPath, entry.name)).split(sep).join('/'));
     }
   }
-  if (forceOverwrite) {
-    for (const directory of RETIRED_RUNTIME_DIRECTORIES) allowedDirectories.add(directory);
-  }
-  const installedFiles = await collectFiles(destination, destination, [], allowedDirectories);
+  const installedFiles = await collectFiles(destination, destination, [], allowedDirectories, {
+    allowUnknownDirectories: forceOverwrite,
+    includeSymlinks: forceOverwrite,
+  });
   if (!installedFiles.includes('plugin.json')) {
     throw new Error(`Installation conflict; refusing to overwrite unknown files at ${destination}`);
   }
@@ -903,7 +906,7 @@ async function assertReplaceableRuntime(source, destination, files, manifest, { 
     if (!stdin.isTTY) {
       throw new Error(`Installation conflict; refusing to overwrite unknown files at ${destination}`);
     }
-    const terminal = createInterface({ input: stdin, output: stdout });
+    const terminal = createInterface({ input: stdin, output: process.stderr });
     let confirmed;
     try {
       const answer = await terminal.question(
@@ -1337,6 +1340,7 @@ export async function initializePlugin({
   confirmPluginActivation,
   confirmMcpChanges,
   confirmLegacyCleanup,
+  confirmForceOverwrite,
   runCommand = (command, args, options) => execFileAsync(command, args, options),
 } = {}) {
   if (!SUPPORTED_CLIENTS.has(client)) {
@@ -1451,11 +1455,12 @@ export async function initializePlugin({
   const promptAssets = shared
     ? await readJetBrainsPromptAssets(source, command, promptHistory)
     : [];
-  if (within(source, destination)) {
+  const updatingInstalledRuntime = shared && source === destination && forceOverwrite;
+  if (within(source, destination) && !updatingInstalledRuntime) {
     throw new Error('Plugin installation target cannot be inside its source directory');
   }
   await assertNoSymlinkPath(target, ['.copilot', 'plugins', manifest.name]);
-  if (shared) await assertSharedPath(source, target, destination);
+  if (shared) await assertSharedPath(source, target, destination, updatingInstalledRuntime);
   if (instructions !== undefined) {
     await assertNoSymlinkPath(
       target,
@@ -1483,12 +1488,15 @@ export async function initializePlugin({
   let reinstallRuntime = false;
   if (destinationExists) {
     if (shared) await assertReplaceableRuntime(source, destination, files, manifest, { forceOverwrite });
-    if (!(await treesMatch(source, destination, files))) {
+    if (!(await treesMatch(source, destination, files, forceOverwrite))) {
       if (!shared) {
         throw new Error(`Installation conflict; refusing to overwrite existing files at ${destination}`);
       }
       reinstallRuntime = true;
-      const installedPrompts = (await collectFiles(destination)).filter((file) => file.startsWith('workflows/prompts/'));
+      const installedPrompts = (await collectFiles(destination, destination, [], undefined, {
+        allowUnknownDirectories: forceOverwrite,
+        includeSymlinks: forceOverwrite,
+      })).filter((file) => file.startsWith('workflows/prompts/'));
       if (JETBRAINS_PROMPTS.every(({ source: asset }) => installedPrompts.includes(`workflows/prompts/${asset}`))) {
         const previous = await readJetBrainsPromptAssets(destination, command, promptHistory);
         for (const [index, prompt] of promptAssets.entries()) {
@@ -1568,8 +1576,16 @@ export async function initializePlugin({
     }
   }
 
+  if (!dryRun && forceOverwrite) {
+    const confirm = confirmForceOverwrite ?? askForForceOverwriteConfirmation;
+    if (!(await confirm({ runtimePath: destination, targetRoot: target }))) {
+      throw new Error('Force overwrite was not authorized; no changes were made');
+    }
+    cleanupAuthorized = true;
+  }
+
   if (!dryRun) {
-    if (requiresConfirmation) {
+    if (requiresConfirmation && !cleanupAuthorized) {
       const confirm = confirmLegacyCleanup ?? askForLegacyCleanupConfirmation;
       cleanupAuthorized = await confirm({ root: legacyRoot, files: legacy.planned });
     }
@@ -1829,6 +1845,19 @@ export async function initializePlugin({
     nextStep: getNextStep(client, destination, join(target, '.github', 'prompts')),
     workspaceDirectories: DEFAULT_WORKSPACE_DIRECTORIES,
   };
+}
+
+async function askForForceOverwriteConfirmation({ runtimePath, targetRoot }) {
+  const terminal = createInterface({ input: stdin, output: process.stderr });
+  try {
+    const answer = await terminal.question(
+      `--force substituirá o runtime em ${runtimePath} e os arquivos gerenciados do projeto em ${targetRoot}. ` +
+      'Conteúdo personalizado no runtime será removido. Prosseguir? (s/n): ',
+    );
+    return answer.trim().toLowerCase() === 's';
+  } finally {
+    terminal.close();
+  }
 }
 
 async function askForLegacyCleanupConfirmation({ root, files, instructionsPath }) {

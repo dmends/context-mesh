@@ -23,11 +23,12 @@ describe("init.mjs", () => {
     );
   });
 
-  it("exports DEFAULT_WORKSPACE_DIRECTORIES containing the four standard directories", async () => {
+  it("exports DEFAULT_WORKSPACE_DIRECTORIES containing the standard directories", async () => {
     const { DEFAULT_WORKSPACE_DIRECTORIES } = await import("./init.mjs");
     assert.deepEqual(DEFAULT_WORKSPACE_DIRECTORIES, [
       "workspace/.context",
       "workspace/.discovery",
+      "workspace/.analysis",
       "workspace/.knowledge",
       "workspace/src",
     ]);

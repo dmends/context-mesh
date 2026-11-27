@@ -28,6 +28,7 @@ export const WORKFLOW_STEPS = Object.freeze([
       'fontes cadastradas com papel legacy ou reference',
       'workspace/src/',
       'workspace/.knowledge/',
+      'workspace/.analysis/',
       'workspace/.discovery/<iniciativa>/results/as-is-knowledge/',
     ],
     accumulative: true,
@@ -49,12 +50,14 @@ export const WORKFLOW_STEPS = Object.freeze([
       'workspace/.discovery/<iniciativa>/results/business-epic/',
       'workspace/.discovery/<iniciativa>/results/as-is-knowledge/',
       'workspace/.knowledge/',
+      'workspace/.analysis/',
       'workspace/.context/',
     ],
     inputs: [
       'workspace/.discovery/<iniciativa>/results/business-epic/',
       'workspace/.discovery/<iniciativa>/results/as-is-knowledge/',
       'workspace/.knowledge/',
+      'workspace/.analysis/',
       'workspace/.context/',
     ],
     sourceRoles: ['documentation'],
@@ -178,7 +181,7 @@ export const WORKFLOW_STEPS = Object.freeze([
     requires: ['story-task-breakdown'],
     outputs: ['technical-refinement'],
     outputDirectory: 'workspace/.discovery/<iniciativa>/results/technical-refinement',
-    templates: ['templates/008-knowledge-flow.md'],
+    templates: ['templates/008-analysis.md'],
     instructions:
       'Detalhe os critérios de aceite e o refinamento técnico de cada história. ' +
       'Identifique riscos e dependências por história e valide a cobertura com a especificação de solução.',

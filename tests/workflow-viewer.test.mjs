@@ -437,16 +437,22 @@ test('painel de detalhes lê artefatos e snapshots aprovados sem oferecer ediç�
   assert.equal(statusRow.children[0].className, 'status-badge done');
   assert.equal(descendants(elements.details).find((item) => item.className === 'detail-meta-row').children
     .some((item) => item.className.startsWith('status-badge')), false);
+  assert.match(elements.details.textContent, /Iniciativa: run/);
+  assert.match(elements.details.textContent, /Tema/);
   const copyPrompt = descendants(elements.details).find((item) => item.attributes['aria-label'] === 'Copiar prompt recomendado para esta etapa');
   await copyPrompt.listeners.click();
   const businessEpic = WORKFLOW_STEPS.find(({ id }) => id === 'business-epic');
   assert.equal(copiedPrompt, [
+    'Contexto:',
+    '- Iniciativa: run',
+    '- Tema: Tema',
+    '',
     businessEpic.promptCommand,
     '',
     businessEpic.instructions,
     '',
     'Fontes recomendadas:',
-    ...businessEpic.recommendedSources.map((source) => `- ${source}`),
+    ...businessEpic.recommendedSources.map((source) => `- ${source.replaceAll('<iniciativa>', 'run')}`),
   ].join('\n'));
   assert.match(elements.notice.textContent, /Prompt recomendado copiado\.$/);
   const noticesBeforeSecondCopy = elements.notice.children.length;

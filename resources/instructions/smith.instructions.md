@@ -13,10 +13,11 @@ Smith estrutura o trabalho de desenvolvimento em fases sequenciais rastreadas pe
 | **Gate de validação** | `validation gate` — requer `APPROVE` |
 | Quebra de histórias   | `story breakdown`                    |
 | Detalhamento técnico  | `technical refinement`               |
-| Knowledge Flow        | `knowledge flow`                     |
 | Knowledge API         | `api knowledge`                      |
 
 {{command-mapping}}
+
+`analysis` é um comando auxiliar, não uma etapa do workflow. Ele gera documentação reutilizável em `workspace/.analysis/`.
 
 ## Contexto do Projeto
 - Ao gerar código, documentação ou respostas, sempre considere o contexto do projeto configurado.
@@ -38,6 +39,7 @@ Classifique pelo tipo de conhecimento produzido, não apenas pela origem do mate
 | Conteúdo produzido     | Critério                                                                                                                                                                            | Destino                                                                                                                                                                               |
 |------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Knowledge As-Is        | Análise baseada exclusivamente no código, descrevendo o comportamento atual sem misturar insumos externos ou decisões propostas.                                                    | `workspace/.discovery/<iniciativa>/results/as-is-knowledge/`                                                                                                                                    |
+| Analysis               | Análise reutilizável de fluxo ou funcionalidade observada no código.                                                                                                               | `workspace/.analysis/<categoria>/<dominio>/`                                                                                                                                                    |
 | Épico de negócio       | Épico inicial para validação, produzido a partir das fontes de negócio.                                                                                                               | `workspace/.discovery/<iniciativa>/results/business-epic/`                                                                                                                                      |
 | Discovery consolidado  | Síntese do épico, knowledge, contexto, dependências e riscos.                                                                                                                          | `workspace/.discovery/<iniciativa>/results/discovery-consolidation/`                                                                                                                            |
 | Especificação técnica  | Solução To-Be e ARD de entrada do arquiteto.                                                                                                                                           | `workspace/.discovery/<iniciativa>/results/tech-solution-specification/`                                                                                                                        |
@@ -77,10 +79,11 @@ workspace/
 │           ├── tech-solution-specification/
 │           ├── technical-refinement/
 │           └── validation-gate/
-└── .knowledge/
+├── .knowledge/
     ├── dominios/                     # conhecimento independente da implementação
     ├── legado/                       # conhecimento As-Is do sistema legado
     └── refatorado/                   # conhecimento As-Is do sistema refatorado
+└── .analysis/                        # análises reutilizáveis de fluxos e funcionalidades
 ```
 
 Arquivos de artefatos de uma iniciativa devem usar nomes descritivos em kebab-case com número sequencial e slug do tema, como `001-regra-da-primeira-parcela.md`. Mantenha os temas juntos na pasta de resultados correspondente e não reutilize números dentro dela.
@@ -101,6 +104,7 @@ Use os modelos em `plugin/templates/` ao criar documentos desses tipos:
 | `005-technical-specification.md` | Especificação técnica To-Be.                                                                            | `workspace/.discovery/<iniciativa>/results/tech-solution-specification/`                                                            |
 | `006-story-task-breakdown.md`    | Quebra de histórias/tasks.                                                                              | `workspace/.discovery/<iniciativa>/results/story-task-breakdown/`                                                                   |
 | `007-execution-plan.md`          | Plano de execução.                                                                                      | `workspace/.discovery/<iniciativa>/results/story-task-breakdown/`                                                                   |
+| `008-analysis.md`                | Análise reutilizável de fluxo ou funcionalidade observada no código.                                     | `workspace/.analysis/<categoria>/<dominio>/`                                                                                         |
 
 Os arquivos em `plugin/templates/` são modelos reutilizáveis, não resultados de discovery. Ao preencher um modelo, cite as fontes consultadas em uma seção agregada no final: por exemplo, agendas por data e participantes/áreas, ou código por sistema e nome dos módulos. Não exija paths, URLs, commits, símbolos ou IDs de fonte, nem vincule cada afirmação a uma referência individual. Registre incertezas, divergências e limitações de forma ampla no final; não classifique cada item individualmente, a menos que seja necessário para destacar uma pendência relevante. O template de contrato de entrada descreve somente o que está implementado no código; não presuma que uma especificação externa representa o comportamento atual. O épico consolidado de agendas é uma versão inicial para validação e evolução, não um rascunho nem uma decisão aprovada. Só crie um documento preenchido quando o usuário solicitar o registro.
 

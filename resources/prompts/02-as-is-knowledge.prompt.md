@@ -16,6 +16,7 @@ Não altere instruções globais do projeto, configurações pessoais ou MCP; n�
 - **Pré-requisitos:** nenhum.
 - **Fontes:** fontes cadastradas com papel `legacy` ou `reference`, além do knowledge de entrada indicado pelo workflow. Não presuma uma estrutura fixa em `workspace/src/`.
 - **Saída registrada:** `knowledge`.
+- **Destino:** publique o artefato do step em `workspace/.discovery/<run-id>/results/as-is-knowledge/`. `workspace/.knowledge/` é apenas material de entrada; não publique o resultado nela nem classifique o artefato por categoria.
 - **Templates instalados:** `.copilot/plugins/smith/templates/000-knowledge-api.md` para contrato de entrada de API; `.copilot/plugins/smith/templates/001-knowledge-as-is.md` para outros comportamentos As-Is.
 
 **Economia de Contexto e Subagentes:** A exploração de código-fonte consome muitos tokens. Nunca leia pastas inteiras diretamente para o contexto principal da conversa. Delegue a busca e leitura de arquivos em `workspace/src/` a subagentes nativos de exploração, trazendo para a conversa principal apenas os trechos de código e comportamentos comprovados necessários para documentar o As-Is.

@@ -529,6 +529,27 @@ test('dynamic step selection respects prerequisites', async (t) => {
   assert.deepEqual(await engine.getReadySteps(context), ['as-is-knowledge', 'discovery-consolidation']);
 });
 
+test('recording another step with a different input set preserves existing artifacts', async (t) => {
+  const engine = await loadEngine();
+  const workspaceRoot = createWorkspace(t);
+  const epicInput = 'workspace/.discovery/test-topic/results/business-epic/story.md';
+  const knowledgeInput = 'workspace/.discovery/test-topic/input/legacy/implementation.md';
+  mkdirSync(path.dirname(path.join(workspaceRoot, knowledgeInput)), { recursive: true });
+  writeFileSync(path.join(workspaceRoot, knowledgeInput), 'legacy implementation');
+  const epicContext = { workspaceRoot, runId: 'distinct-step-inputs', inputFiles: [epicInput] };
+  const knowledgeContext = { ...epicContext, inputFiles: [knowledgeInput] };
+  const epicPath = 'workspace/.discovery/test-topic/results/business-epic/001-epic.md';
+
+  await completeStep(engine, epicContext, 'business-epic', { 'business-epic': epicPath });
+  await completeStep(engine, knowledgeContext, 'as-is-knowledge', {
+    knowledge: 'workspace/.discovery/test-topic/results/as-is-knowledge/001-knowledge.md',
+  });
+
+  const state = await engine.readWorkflowRun(knowledgeContext);
+  assert.equal(stepState(state, 'business-epic').status, 'completed');
+  assert.equal(artifactReference(state, 'business-epic', 'business-epic').path, epicPath);
+});
+
 test('accumulative step remains in readySteps after completion and can be re-executed', async (t) => {
   const engine = await loadEngine();
   const workspaceRoot = createWorkspace(t);

@@ -18,8 +18,9 @@ Smith estrutura o trabalho de desenvolvimento em fases sequenciais rastreadas pe
 | **Gate de validação**  | `validation gate`      | tech spec — requer `APPROVE`    |
 | Quebra de histórias    | `story breakdown`      | gate aprovado                   |
 | Detalhamento técnico   | `technical refinement` | story breakdown                 |
-| Knowledge Flow         | `knowledge flow`       | qualquer etapa                  |
-| Knowledge API          | `api knowledge`        | qualquer etapa                  |
+| Knowledge API          | `api knowledge`         | qualquer etapa                  |
+
+Analysis é um comando auxiliar para gerar documentação reutilizável em `workspace/.analysis/`; não é uma fase do workflow.
 
 ## Regras de Execução e Economia de Contexto
 
@@ -54,6 +55,6 @@ Mencione o trigger correspondente na conversa para ativar a habilidade:
 - `validation gate` → Gate de validação
 - `story breakdown` → Quebra de histórias e plano
 - `technical refinement` → Detalhamento técnico
-- `knowledge flow` → Knowledge Flow
+- `analysis` → Analysis (documentação reutilizável em `workspace/.analysis/`)
 - `api knowledge` → Knowledge API
 - `using smith` → Ajuda sobre o workflow

@@ -1,4 +1,4 @@
-# Fluxo de conhecimento — <domínio/funcionalidade>
+# Análise — <domínio/funcionalidade>
 
 > Documente o fluxo completo observado no código para a funcionalidade ou domínio indicado. Não misture comportamento atual com requisitos desejados, decisões propostas ou regras inferidas de fontes externas.
 >

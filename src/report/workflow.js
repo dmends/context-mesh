@@ -527,7 +527,7 @@ function closeButton() {
   return button;
 }
 
-async function copyRecommendedPrompt(definition) {
+async function copyRecommendedPrompt(definition, node) {
   if (!definition.instructions || !definition.promptCommand || !definition.recommendedSources?.length) {
     showToast(notice, 'Não há prompt recomendado para esta etapa.');
     return;
@@ -537,13 +537,19 @@ async function copyRecommendedPrompt(definition) {
     return;
   }
   try {
+    const initiativeName = currentStateObj.runId;
     const prompt = [
+      'Contexto:',
+      `- Iniciativa: ${initiativeName}`,
+      `- Tema: ${node.tema}`,
+      '',
       definition.promptCommand,
       '',
       definition.instructions,
       '',
       'Fontes recomendadas:',
-      ...definition.recommendedSources.map((source) => `- ${source}`),
+      ...definition.recommendedSources.map((source) =>
+        `- ${source.replaceAll('<iniciativa>', initiativeName)}`),
     ].join('\n');
     await navigator.clipboard.writeText(prompt);
     showToast(notice, 'Prompt recomendado copiado.');
@@ -596,7 +602,7 @@ async function showDetails(node, definition) {
   copyPrompt.title = 'Copiar prompt recomendado para esta etapa';
   copyPrompt.setAttribute('aria-label', copyPrompt.title);
   copyPrompt.append(svgIcon('M7 7h9v10H7z M4 13H3V3h9v1'));
-  copyPrompt.addEventListener('click', () => copyRecommendedPrompt(definition));
+  copyPrompt.addEventListener('click', () => copyRecommendedPrompt(definition, node));
   actions.append(copyPrompt, closeButton());
   topbar.append(element('h2', labels[definition.id] || definition.id), actions);
   details.append(topbar);
@@ -607,6 +613,7 @@ async function showDetails(node, definition) {
   statusRow.append(statusBadge(state.status));
   scroll.append(statusRow);
   const meta = element('div', '', 'detail-meta-row');
+  meta.append(element('span', `Iniciativa: ${currentStateObj.runId}`, 'detail-chip'));
   meta.append(element('span', node.tema, 'detail-chip'));
   meta.append(element('span', definition.requires.length
     ? `Depende de: ${definition.requires.join(', ')}` : 'Sem dependências', 'detail-chip'));

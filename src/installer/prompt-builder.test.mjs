@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { describe, it, before, after } from 'node:test';
 import { buildPromptContent } from './prompt-builder.mjs';
+import { WORKFLOW_STEPS } from '../workflows/project-lifecycle.mjs';
 
 const REAL_PROMPT_DIR = fileURLToPath(new URL('../../resources/prompts', import.meta.url));
 
@@ -56,6 +57,56 @@ describe('buildPromptContent', () => {
     writeFileSync(fixture, `---\nname: "test"\ndescription: "d"\n---\n\n**Templates instalado:** foo\nbody\n`);
     const result = await buildPromptContent(fixture, { stage: 'as-is-knowledge', workflowCommand: 'cmd', step: undefined });
     assert.match(result.content.toString('utf8'), /Templates instalado/);
+  });
+
+  it('publishes As-Is knowledge as a workflow artifact, not a knowledge category', async () => {
+    const sourcePath = join(REAL_PROMPT_DIR, '02-as-is-knowledge.prompt.md');
+    const step = WORKFLOW_STEPS.find(({ id }) => id === 'as-is-knowledge');
+    const result = await buildPromptContent(sourcePath, {
+      stage: 'as-is-knowledge',
+      workflowCommand: 'node plugin/core/cli.mjs',
+      step,
+    });
+    const content = result.content.toString('utf8');
+    assert.match(content, /--step as-is-knowledge --input/);
+    assert.doesNotMatch(content, /--knowledge-category/);
+    assert.match(content, /workspace\/\.discovery\/<run-id>\/results\/as-is-knowledge/);
+  });
+
+  it('renders alias prompts with the canonical workflow step for templates and publication', async () => {
+    const aliases = [
+      ['03-discovery-result.prompt.md', 'discovery-result', 'discovery-consolidation'],
+      ['10-api-knowledge.prompt.md', 'api-knowledge', 'as-is-knowledge'],
+    ];
+
+    for (const [filename, alias, stepId] of aliases) {
+      const sourcePath = join(REAL_PROMPT_DIR, filename);
+      const result = await buildPromptContent(sourcePath, {
+        stage: alias,
+        workflowCommand: 'node plugin/core/cli.mjs',
+      });
+      const content = result.content.toString('utf8');
+
+      assert.match(content, new RegExp(`template --step ${stepId}`), filename);
+      assert.match(content, new RegExp(`publish --workspace \\. --run-id <run-id> --tema "<tema>" --step ${stepId}`), filename);
+      assert.doesNotMatch(content, new RegExp(`template --step ${alias}(?:\\s|$)`), filename);
+      assert.doesNotMatch(content, / complete --workspace /, filename);
+    }
+  });
+
+  it('keeps Analysis independent from workflow steps and directs output to the analysis directory', async () => {
+    const sourcePath = join(REAL_PROMPT_DIR, '09-analysis.prompt.md');
+    const result = await buildPromptContent(sourcePath, {
+      stage: 'analysis',
+      workflowCommand: 'node plugin/core/cli.mjs',
+    });
+    const content = result.content.toString('utf8');
+
+    assert.match(content, /não é uma etapa do workflow/i);
+    assert.match(content, /workspace\/\.analysis\//);
+    assert.match(content, /008-analysis\.md/);
+    assert.doesNotMatch(content, /template --step|ready --workspace|publish --workspace|complete --workspace/);
+    assert.doesNotMatch(content, /workspace\/\.knowledge|results\/as-is-knowledge/);
   });
 
   it('throws ENOENT for missing source file', async () => {

@@ -67,7 +67,7 @@ test('force atualiza visualizador antigo sem marcadores atuais', async (t) => {
     '--client', 'jetbrains',
     '--agent', 'copilot',
     '--force',
-  ], { encoding: 'utf8' });
+  ], { encoding: 'utf8', input: 's\n' });
 
   assert.equal(result.status, 0, result.stderr);
   assert.equal(JSON.parse(result.stdout).viewerStatus, 'updated');
@@ -100,6 +100,11 @@ test('IntelliJ and VS Code use one runtime with nine prompts per project', async
     assert.equal(result.prompts.length, 10);
     for (const { path } of result.prompts) {
       const prompt = readFileSync(path, 'utf8');
+      if (path.endsWith('analysis.prompt.md')) {
+        assert.match(prompt, /workspace\/\.analysis\//);
+        assert.doesNotMatch(prompt, /--tema "<tema>"|ready --workspace|publish --workspace|complete --workspace/);
+        continue;
+      }
       assert.match(prompt, /--tema "<tema>"/);
       assert.match(prompt, /não crie planos auxiliares em disco/);
       if (!path.endsWith('validation-gate.prompt.md')) {
@@ -189,10 +194,20 @@ test('force removes known retired runtime directories during shared runtime refr
   const retiredSkill = join(first.installPath, 'agents/antigravity/skills/initial-project/SKILL.md');
   mkdirSync(join(first.installPath, 'agents/antigravity/skills/initial-project'), { recursive: true });
   writeFileSync(retiredSkill, '# Obsolete skill');
+  const renamedSkill = join(first.installPath, 'agents/antigravity/skills/knowledge-flow/SKILL.md');
+  mkdirSync(join(first.installPath, 'agents/antigravity/skills/knowledge-flow'), { recursive: true });
+  writeFileSync(renamedSkill, '# Renamed skill');
+  const unexpectedDirectory = join(first.installPath, 'custom/untracked');
+  mkdirSync(unexpectedDirectory, { recursive: true });
+  writeFileSync(join(unexpectedDirectory, 'file.txt'), 'custom runtime content');
+  const outsideFile = join(options.root, 'outside.txt');
+  writeFileSync(outsideFile, 'preserve external target');
+  symlinkSync(outsideFile, join(unexpectedDirectory, 'external-link'));
 
   await assert.rejects(initializePlugin(options), /unexpected directory/i);
   assert.equal(existsSync(retiredFile), true);
   assert.equal(existsSync(retiredSkill), true);
+  assert.equal(existsSync(renamedSkill), true);
 
   const result = spawnSync(process.execPath, [
     join(options.sourceRoot, 'installer/init.mjs'),
@@ -201,12 +216,62 @@ test('force removes known retired runtime directories during shared runtime refr
     '--client', 'jetbrains',
     '--agent', 'copilot',
     '--force',
-  ], { encoding: 'utf8' });
+  ], { encoding: 'utf8', input: 's\n' });
   assert.equal(result.status, 0, result.stderr);
   assert.equal(JSON.parse(result.stdout).runtimeStatus, 'reinstalled');
   assert.equal(existsSync(retiredFile), false);
   assert.equal(existsSync(retiredSkill), false);
+  assert.equal(existsSync(renamedSkill), false);
+  assert.equal(existsSync(unexpectedDirectory), false);
+  assert.equal(readFileSync(outsideFile, 'utf8'), 'preserve external target');
   assert.equal(existsSync(join(first.installPath, 'report/prototipe')), false);
+});
+
+test('force updates a workspace when the installer source is the installed shared runtime', async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'shared runtime in-place '));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const sharedRoot = join(root, 'user data');
+  const sourceRoot = join(root, 'package');
+  const targetRoot = join(root, 'workspace');
+  mkdirSync(targetRoot);
+  await buildPackage({ output: sourceRoot });
+  const options = { root, sourceRoot, sharedRoot, targetRoot, client: 'jetbrains' };
+  const installed = await initializePlugin(options);
+  const prompt = installed.prompts.find(({ path }) => path.endsWith('business-epic.prompt.md')).path;
+  writeFileSync(prompt, 'local prompt customization');
+
+  const result = await initializePlugin({
+    ...options,
+    sourceRoot: installed.installPath,
+    forceOverwrite: true,
+    confirmForceOverwrite: async () => true,
+  });
+
+  assert.equal(result.installPath, installed.installPath);
+  assert.equal(result.runtimeStatus, 'unchanged');
+  assert.equal(result.prompts.find(({ path }) => path === prompt).status, 'updated');
+  assert.match(readFileSync(prompt, 'utf8'), /publish --workspace/);
+});
+
+test('--force asks for confirmation and makes no changes when declined', async (t) => {
+  const options = await fixture(t);
+  const installed = await initializePlugin(options);
+  const obsoleteDirectory = join(installed.installPath, 'custom/untracked');
+  mkdirSync(obsoleteDirectory, { recursive: true });
+  writeFileSync(join(obsoleteDirectory, 'file.txt'), 'keep unless confirmed');
+
+  const result = spawnSync(process.execPath, [
+    join(options.sourceRoot, 'installer/init.mjs'),
+    '--target', options.targetRoot,
+    '--shared-root', options.sharedRoot,
+    '--client', 'jetbrains',
+    '--agent', 'copilot',
+    '--force',
+  ], { encoding: 'utf8', input: 'n\n' });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Force overwrite was not authorized/);
+  assert.equal(readFileSync(join(obsoleteDirectory, 'file.txt'), 'utf8'), 'keep unless confirmed');
 });
 
 test('upgrade replaces only known legacy prompts and retires only verified runtime files', async (t) => {
@@ -262,7 +327,11 @@ test('upgrade replaces prompts rendered by the previous plugin version', async (
   const result = await initializePlugin(options);
   assert.equal(result.prompts.length, 10);
   assert.ok(result.prompts.every(({ status }) => status === 'updated'));
-  assert.ok(result.prompts.every(({ path }) => readFileSync(path, 'utf8').includes('--tema "<tema>"')));
+  const analysisPrompt = result.prompts.find(({ path }) => path.endsWith('analysis.prompt.md'));
+  assert.doesNotMatch(readFileSync(analysisPrompt.path, 'utf8'), /--tema "<tema>"|publish --workspace/);
+  assert.ok(result.prompts
+    .filter(({ path }) => !path.endsWith('analysis.prompt.md'))
+    .every(({ path }) => readFileSync(path, 'utf8').includes('--tema "<tema>"')));
 });
 
 test('doctor rejects a project prompt still pointing at the legacy runtime', async (t) => {

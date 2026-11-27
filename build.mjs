@@ -24,7 +24,7 @@ const COPILOT_COMMAND_MAPPING = [
   "| `/Smith: Gate de validação` | `.github/prompts/smith-validation-gate.prompt.md` |",
   "| `/Smith: Quebra de histórias e plano` | `.github/prompts/smith-story-task-breakdown.prompt.md` |",
   "| `/Smith: Detalhamento técnico` | `.github/prompts/smith-technical-refinement.prompt.md` |",
-  "| `/Smith: Knowledge Flow` | `.github/prompts/smith-knowledge-flow.prompt.md` |",
+  "| `/Smith: Analysis` | `.github/prompts/smith-analysis.prompt.md` |",
   "| `/Smith: Knowledge API` | `.github/prompts/smith-api-knowledge.prompt.md` |",
   "",
   "Só leia esses arquivos quando o usuário invocar um dos comandos Smith.",
@@ -41,7 +41,7 @@ export const COPILOT_PROMPTS = [
   { source: '06-tech-solution-specification.prompt.md', destination: 'smith-tech-solution-specification.prompt.md' },
   { source: '07-story-task-breakdown.prompt.md', destination: 'smith-story-task-breakdown.prompt.md' },
   { source: '08-technical-refinement.prompt.md', destination: 'smith-technical-refinement.prompt.md' },
-  { source: '09-knowledge-flow.prompt.md', destination: 'smith-knowledge-flow.prompt.md' },
+  { source: '09-analysis.prompt.md', destination: 'smith-analysis.prompt.md' },
   { source: '10-api-knowledge.prompt.md', destination: 'smith-api-knowledge.prompt.md' },
 ];
 

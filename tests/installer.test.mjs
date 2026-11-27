@@ -17,7 +17,7 @@ const JETBRAINS_PROMPTS = [
   { source: '06-tech-solution-specification.prompt.md', destination: 'smith-tech-solution-specification.prompt.md', stage: 'tech-solution-specification' },
   { source: '07-story-task-breakdown.prompt.md', destination: 'smith-story-task-breakdown.prompt.md', stage: 'story-task-breakdown' },
   { source: '08-technical-refinement.prompt.md', destination: 'smith-technical-refinement.prompt.md', stage: 'technical-refinement' },
-  { source: '09-knowledge-flow.prompt.md', destination: 'smith-knowledge-flow.prompt.md', stage: 'knowledge-flow' },
+  { source: '09-analysis.prompt.md', destination: 'smith-analysis.prompt.md', stage: 'analysis' },
   { source: '10-api-knowledge.prompt.md', destination: 'smith-api-knowledge.prompt.md', stage: 'as-is-knowledge' },
 ];
 
