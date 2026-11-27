@@ -20,6 +20,7 @@ npm-debug.log*
 .idea/
 .vscode/
 .DS_Store
+.worktrees/
 
 # Smith local state
 .smith/
