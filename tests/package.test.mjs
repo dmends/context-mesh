@@ -43,6 +43,14 @@ const PROMPT_ASSETS = [
   { file: '09-analysis.prompt.md', stageId: 'analysis' },
   { file: '10-api-knowledge.prompt.md', stageId: 'as-is-knowledge' },
 ];
+const MCP_DELEGATION_PROMPT_FILES = PROMPT_ASSETS
+  .map(({ file }) => file)
+  .filter((file) => file !== '05-validation-gate.prompt.md');
+const MCP_PATH_GUIDANCE_FILES = [
+  'resources/instructions/smith.instructions.md',
+  'resources/agents/common/workflow-overview.md',
+  ...MCP_DELEGATION_PROMPT_FILES.map((file) => `resources/prompts/${file}`),
+];
 const AGENT_OUTPUT_FILES = [
   "agents/antigravity/.antigravity-plugin/plugin.json",
   "agents/antigravity/AGENTS.md",
@@ -169,6 +177,20 @@ const EXPECTED_PACKAGE_FILES = [
   'workflows/project-lifecycle.mjs',
   ...PROMPT_ASSETS.map(({ file }) => `workflows/prompts/${file}`),
 ].sort();
+
+test('MCP delegation guidance requires absolute local paths', () => {
+  for (const file of MCP_PATH_GUIDANCE_FILES) {
+    const guidance = readFileSync(path.join(REPOSITORY_ROOT, file), 'utf8');
+    assert.match(guidance, /somente caminhos absolutos do filesystem local/i, file);
+    assert.match(guidance, /resolva qualquer caminho relativo antes da chamada/i, file);
+  }
+
+  const instructions = readFileSync(
+    path.join(REPOSITORY_ROOT, 'resources/instructions/smith.instructions.md'),
+    'utf8',
+  );
+  assert.match(instructions, /@\/caminho\/absoluto/);
+});
 
 function createDirectory(t, prefix) {
   const directory = mkdtempSync(path.join(os.tmpdir(), prefix));

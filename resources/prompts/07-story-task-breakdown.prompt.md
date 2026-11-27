@@ -18,7 +18,7 @@ Não altere instruções globais do projeto, configurações pessoais ou MCP; n�
 - **Saídas registradas:** `story-task-breakdown` e `execution-plan`.
 - **Templates instalados:** `.copilot/plugins/smith/templates/006-story-task-breakdown.md` e `.copilot/plugins/smith/templates/007-execution-plan.md`.
 
-**Economia de Contexto e Subagentes:** Divida a análise da especificação e o mapeamento de dependências em tarefas independentes e delegue-as via MCP aos CLIs locais Claude Code/Antigravity; mantenha na conversa principal apenas síntese e decisões. Antes de cada chamada, consulte a lista de modelos e escolha a faixa de menor custo. Nunca inclua credenciais ou segredos.
+**Economia de Contexto e Subagentes:** Divida a análise da especificação e o mapeamento de dependências em tarefas independentes e delegue-as via MCP aos CLIs locais Claude Code/Antigravity; mantenha na conversa principal apenas síntese e decisões. Ao fornecer caminhos de arquivos ou diretórios ao MCP, use somente caminhos absolutos do filesystem local; resolva qualquer caminho relativo antes da chamada. Antes de cada chamada, consulte a lista de modelos e escolha a faixa de menor custo. Nunca inclua credenciais ou segredos.
 
 Reutilize o `run-id` da iniciativa, o mesmo `tema` do subnó e a lista estável de arquivos-fonte, sem incluir artefatos gerados nos argumentos `--input`. Os caminhos são relativos à raiz do projeto. Antes de redigir, execute:
 

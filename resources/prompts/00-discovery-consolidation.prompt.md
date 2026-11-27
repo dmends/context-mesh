@@ -18,7 +18,7 @@ Não altere instruções globais do projeto, configurações pessoais ou MCP; n�
 - **Saída registrada:** `discovery-consolidation`.
 - **Template instalado:** `.copilot/plugins/smith/templates/000-discovery-consolidation.md`.
 
-**Economia de Contexto e Subagentes:** Não carregue arquivos brutos inteiros na conversa principal. Divida a leitura de `business-epic` e `as-is-knowledge` em tarefas independentes e delegue-as via MCP aos CLIs locais Claude Code/Antigravity. Peça conclusões concisas e evidências; use referências a arquivos quando disponíveis, sem copiar o conteúdo bruto. Consulte o catálogo do agente e escolha a faixa de menor custo antes de cada chamada. Nunca inclua credenciais ou segredos.
+**Economia de Contexto e Subagentes:** Não carregue arquivos brutos inteiros na conversa principal. Divida a leitura de `business-epic` e `as-is-knowledge` em tarefas independentes e delegue-as via MCP aos CLIs locais Claude Code/Antigravity. Peça conclusões concisas e evidências; use referências a arquivos quando disponíveis, sem copiar o conteúdo bruto. Ao fornecer caminhos de arquivos ou diretórios ao MCP, use somente caminhos absolutos do filesystem local; resolva qualquer caminho relativo antes da chamada. Consulte o catálogo do agente e escolha a faixa de menor custo antes de cada chamada. Nunca inclua credenciais ou segredos.
 
 Use `run-id` como ID estável da iniciativa e `tema` como nome do subnó atual. Os caminhos `--input` são relativos à raiz do projeto e não devem incluir artefatos gerados. Antes de redigir, execute:
 
