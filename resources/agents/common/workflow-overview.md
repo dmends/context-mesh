@@ -47,6 +47,28 @@ Analysis é um comando auxiliar para gerar documentação reutilizável em `work
 
 A fase `validation-gate` é um checkpoint obrigatório antes de qualquer etapa de downstream (quebra de histórias, planos e refinamento). O agente só avança após o usuário responder expressamente **`APPROVE`**. Sem essa confirmação literal, o workflow permanece bloqueado nesta fase.
 
+## Etapas futuras e progresso
+
+Uma etapa pode ser redigida ou registrada antes de seus pré-requisitos. Sem autorização para ignorá-los, `complete` mantém a etapa como `IN_PROGRESS`; seus arquivos e referências são preservados quando entradas ou etapas anteriores mudam. Esse estado indica progresso, não conclusão nem aprovação.
+
+Use `--allow-out-of-order` somente quando o usuário autorizar explicitamente aquela operação:
+
+```bash
+node .copilot/plugins/smith/core/cli.mjs complete --workspace . --run-id <run-id> --tema "<tema>" --step <etapa> --artifact <nome>=<arquivo.md> --input <fonte> --allow-out-of-order
+node .copilot/plugins/smith/core/cli.mjs publish --workspace . --run-id <run-id> --tema "<tema>" --step <etapa> --input <fonte> --allow-out-of-order < documentos.json
+```
+
+A opção vale apenas para o comando atual, não substitui pré-requisitos válidos nem ignora `validation-gate`. O gate continua exigindo fingerprint válido e confirmação literal `APPROVE`.
+
+Para corrigir ou remover um artefato registrado, use:
+
+```bash
+node .copilot/plugins/smith/core/cli.mjs artifacts update --workspace . --run-id <run-id> --tema "<tema>" --step <etapa> --artifact-path <arquivo.md> < novo-conteudo.md
+node .copilot/plugins/smith/core/cli.mjs artifacts remove --workspace . --run-id <run-id> --tema "<tema>" --step <etapa> --artifact-path <arquivo.md>
+```
+
+Atualizar ou remover afeta somente a referência selecionada e invalida o progresso dependente; remover também exclui o arquivo registrado.
+
 ## Como Invocar Skills
 
 Mencione o trigger correspondente na conversa para ativar a habilidade:

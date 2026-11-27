@@ -1,6 +1,7 @@
 export const StepStatus = Object.freeze({
   PENDING: 'pending',
   RUNNING: 'running',
+  IN_PROGRESS: 'in-progress',
   COMPLETED: 'completed',
   ACCUMULATING: 'accumulating',
   BLOCKED: 'blocked',

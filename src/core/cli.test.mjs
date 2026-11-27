@@ -22,6 +22,20 @@ describe('cli.mjs', () => {
     assert.match(result.stdout, /Usage:/);
   });
 
+  it('limits out-of-order authorization to publish and complete', () => {
+    const result = spawnSync(process.execPath, [
+      cliPath,
+      'status',
+      '--run-id', 'authorization-scope',
+      '--tema', 'test-topic',
+      '--input', 'workspace/story.md',
+      '--allow-out-of-order',
+    ], { encoding: 'utf8' });
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /only valid with complete or publish/i);
+  });
+
   it('initializes an initiative and first theme without source files', (t) => {
     const workspace = mkdtempSync(join(tmpdir(), 'smith-cli-init-'));
     t.after(() => rmSync(workspace, { recursive: true, force: true }));

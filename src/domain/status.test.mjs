@@ -9,6 +9,7 @@ describe('StepStatus', () => {
   it('has expected values', () => {
     assert.equal(StepStatus.PENDING, 'pending');
     assert.equal(StepStatus.RUNNING, 'running');
+    assert.equal(StepStatus.IN_PROGRESS, 'in-progress');
     assert.equal(StepStatus.COMPLETED, 'completed');
     assert.equal(StepStatus.ACCUMULATING, 'accumulating');
     assert.equal(StepStatus.BLOCKED, 'blocked');

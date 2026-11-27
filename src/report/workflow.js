@@ -432,7 +432,7 @@ function render(state) {
   heading.append(title, renderSourcesSection(state));
   overview.append(heading);
   const metrics = element('div', '', 'metrics-row');
-  const metricStatuses = ['COMPLETED', 'RUNNING', 'PENDING', 'FAILED'].map((key) => stepStatuses[key]);
+  const metricStatuses = ['COMPLETED', 'RUNNING', 'IN_PROGRESS', 'PENDING', 'FAILED'].map((key) => stepStatuses[key]);
   for (const definition of metricStatuses) {
     const count = state.nodes.flatMap((node) => node.steps.map((step) => step.status))
       .filter((status) => status === definition.value).length;

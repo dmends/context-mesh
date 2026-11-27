@@ -503,6 +503,8 @@ test('changed inputs invalidate prior approval and block dependent stages', asyn
   };
   await completeUpstream(engine, context);
   await approveGate(engine, context);
+  const solutionPath = 'workspace/.discovery/test-topic/results/tech-solution-specification/001-spec.md';
+  const decisionPath = 'workspace/.discovery/test-topic/results/decision-record/001-decision.md';
 
   writeFileSync(path.join(workspaceRoot, 'workspace/.discovery/test-topic/results/business-epic/story.md'), 'story version two');
   // Re-running business-epic with the new input triggers fingerprint detection, invalidates all
@@ -512,6 +514,12 @@ test('changed inputs invalidate prior approval and block dependent stages', asyn
   });
   const changedState = await engine.readWorkflowRun(context);
   assert.equal(stepState(changedState, 'validation-gate').status, 'pending');
+  assert.equal(stepState(changedState, 'tech-solution-specification').status, 'in-progress');
+  assert.equal(stepState(changedState, 'decision-record').status, 'in-progress');
+  assert.equal(artifactReference(changedState, 'tech-solution-specification', 'tech-solution-specification').path, solutionPath);
+  assert.equal(artifactReference(changedState, 'decision-record', 'decision-record').path, decisionPath);
+  assert.equal(existsSync(path.join(workspaceRoot, solutionPath)), true);
+  assert.equal(existsSync(path.join(workspaceRoot, decisionPath)), true);
   assert.deepEqual(await engine.getReadySteps(context), ['as-is-knowledge', 'discovery-consolidation']);
   await assert.rejects(
     engine.runWorkflowStep({
@@ -521,6 +529,206 @@ test('changed inputs invalidate prior approval and block dependent stages', asyn
     }),
     /blocked|prerequisite/i,
   );
+});
+
+test('invalid artifacts retain their references as in-progress work', async (t) => {
+  const engine = await loadEngine();
+  const workspaceRoot = createWorkspace(t);
+  const context = { workspaceRoot, runId: 'missing-artifact', inputFiles: ['workspace/.discovery/test-topic/results/business-epic/story.md'] };
+  const epicPath = 'workspace/.discovery/test-topic/results/business-epic/001-epic.md';
+  await completeStep(engine, context, 'business-epic', { 'business-epic': epicPath });
+
+  rmSync(path.join(workspaceRoot, epicPath));
+  const state = await engine.readWorkflowRun(context);
+
+  assert.equal(stepState(state, 'business-epic').status, 'in-progress');
+  assert.equal(artifactReference(state, 'business-epic', 'business-epic').path, epicPath);
+});
+
+test('a failed retry preserves previous artifacts as in-progress work', async (t) => {
+  const engine = await loadEngine();
+  const workspaceRoot = createWorkspace(t);
+  const context = { workspaceRoot, runId: 'failed-retry', inputFiles: ['workspace/.discovery/test-topic/results/business-epic/story.md'] };
+  const epicPath = 'workspace/.discovery/test-topic/results/business-epic/001-epic.md';
+  await completeStep(engine, context, 'business-epic', { 'business-epic': epicPath });
+  writeFileSync(path.join(workspaceRoot, context.inputFiles[0]), 'story version two');
+
+  await assert.rejects(engine.runWorkflowStep({
+    ...context,
+    stepId: 'business-epic',
+    execute: async () => { throw new Error('generation failed'); },
+  }), /generation failed/);
+
+  const state = await engine.readWorkflowRun(context);
+  assert.equal(stepState(state, 'business-epic').status, 'in-progress');
+  assert.equal(artifactReference(state, 'business-epic', 'business-epic').path, epicPath);
+  assert.equal(existsSync(path.join(workspaceRoot, epicPath)), true);
+});
+
+test('updating a registered artifact preserves its path and invalidates dependent approval', async (t) => {
+  const engine = await loadEngine();
+  const workspaceRoot = createWorkspace(t);
+  const context = { workspaceRoot, runId: 'update-artifact', inputFiles: ['workspace/.discovery/test-topic/results/business-epic/story.md'] };
+  await completeUpstream(engine, context);
+  await approveGate(engine, context);
+  const solutionPath = 'workspace/.discovery/test-topic/results/tech-solution-specification/001-spec.md';
+
+  const state = await engine.updateWorkflowArtifact({
+    ...context,
+    stepId: 'tech-solution-specification',
+    artifactPath: solutionPath,
+    content: '# Updated solution',
+  });
+
+  assert.equal(readFileSync(path.join(workspaceRoot, solutionPath), 'utf8'), '# Updated solution');
+  assert.equal(artifactReference(state, 'tech-solution-specification', 'tech-solution-specification').path, solutionPath);
+  assert.equal(stepState(state, 'tech-solution-specification').status, 'in-progress');
+  assert.equal(stepState(state, 'decision-record').status, 'in-progress');
+  assert.equal(stepState(state, 'validation-gate').status, 'pending');
+  assert.equal(stepState(state, 'validation-gate').approvedArtifacts, undefined);
+  const unregisteredPath = 'workspace/.discovery/test-topic/results/tech-solution-specification/002-unregistered.md';
+  artifact(workspaceRoot, unregisteredPath, 'unregistered');
+  await assert.rejects(engine.removeWorkflowArtifact({
+    ...context,
+    stepId: 'tech-solution-specification',
+    artifactPath: unregisteredPath,
+  }), /not registered/i);
+  assert.equal(existsSync(path.join(workspaceRoot, unregisteredPath)), true);
+  await assert.rejects(engine.updateWorkflowArtifact({
+    ...context,
+    stepId: 'tech-solution-specification',
+    artifactPath: '../outside.md',
+    content: 'invalid',
+  }), /artifact|output/i);
+});
+
+test('registering a replacement output invalidates completed dependents and gate approval', async (t) => {
+  const engine = await loadEngine();
+  const workspaceRoot = createWorkspace(t);
+  const context = { workspaceRoot, runId: 'replace-upstream-output', inputFiles: ['workspace/.discovery/test-topic/results/business-epic/story.md'] };
+  await completeUpstream(engine, context);
+  await approveGate(engine, context);
+  const previousEpicPath = 'workspace/.discovery/test-topic/results/business-epic/001-epic.md';
+  const replacementEpicPath = 'workspace/.discovery/test-topic/results/business-epic/002-epic.md';
+  artifact(workspaceRoot, replacementEpicPath, 'replacement epic');
+
+  const state = await engine.registerWorkflowOutputs({
+    ...context,
+    stepId: 'business-epic',
+    paths: { 'business-epic': replacementEpicPath },
+  });
+
+  assert.equal(existsSync(path.join(workspaceRoot, previousEpicPath)), true);
+  assert.equal(stepState(state, 'business-epic').status, 'completed');
+  assert.equal(stepState(state, 'discovery-consolidation').status, 'in-progress');
+  assert.equal(stepState(state, 'tech-solution-specification').status, 'in-progress');
+  assert.equal(stepState(state, 'decision-record').status, 'in-progress');
+  assert.equal(stepState(state, 'validation-gate').status, 'pending');
+});
+
+test('updating a shared artifact invalidates approvals in every theme that references it', async (t) => {
+  const engine = await loadEngine();
+  const workspaceRoot = createWorkspace(t);
+  const runId = 'shared-theme-artifact';
+  const contexts = ['topic-a', 'topic-b'].map((tema) => {
+    const inputPath = `workspace/.discovery/${tema}/results/business-epic/story.md`;
+    mkdirSync(path.dirname(path.join(workspaceRoot, inputPath)), { recursive: true });
+    writeFileSync(path.join(workspaceRoot, inputPath), `${tema} source`);
+    return { workspaceRoot, runId, tema, inputFiles: [inputPath] };
+  });
+  const sharedSolutionPath = `workspace/.discovery/${runId}/results/tech-solution-specification/shared-spec.md`;
+  const completeTheme = async (context, suffix) => {
+    await completeStep(engine, context, 'business-epic', {
+      'business-epic': `workspace/.discovery/${runId}/results/business-epic/${suffix}.md`,
+    });
+    await completeStep(engine, context, 'as-is-knowledge', {
+      knowledge: `workspace/.discovery/${runId}/results/as-is-knowledge/${suffix}.md`,
+    });
+    await completeStep(engine, context, 'discovery-consolidation', {
+      'discovery-consolidation': `workspace/.discovery/${runId}/results/discovery-consolidation/${suffix}.md`,
+    });
+    await completeStep(engine, context, 'tech-solution-specification', {
+      'tech-solution-specification': sharedSolutionPath,
+    });
+    await completeStep(engine, context, 'decision-record', {
+      'decision-record': `workspace/.discovery/${runId}/results/decision-record/${suffix}.md`,
+    });
+    await approveGate(engine, context);
+  };
+
+  await completeTheme(contexts[0], 'topic-a');
+  await completeTheme(contexts[1], 'topic-b');
+  await engine.updateWorkflowArtifact({
+    ...contexts[0],
+    stepId: 'tech-solution-specification',
+    artifactPath: sharedSolutionPath,
+    content: '# Changed shared solution',
+  });
+
+  const otherThemeState = await engine.readWorkflowRun(contexts[1]);
+  assert.equal(stepState(otherThemeState, 'tech-solution-specification').status, 'in-progress');
+  assert.equal(stepState(otherThemeState, 'validation-gate').status, 'pending');
+});
+
+test('removing an accumulated artifact leaves other decisions intact', async (t) => {
+  const engine = await loadEngine();
+  const workspaceRoot = createWorkspace(t);
+  const context = { workspaceRoot, runId: 'remove-accumulated-artifact', inputFiles: ['workspace/.discovery/test-topic/results/business-epic/story.md'] };
+  await completeUpstream(engine, context);
+  const firstPath = 'workspace/.discovery/test-topic/results/decision-record/001-decision.md';
+  const secondPath = 'workspace/.discovery/test-topic/results/decision-record/002-decision.md';
+  await completeStep(engine, context, 'decision-record', { 'decision-record': secondPath });
+
+  const state = await engine.removeWorkflowArtifact({
+    ...context,
+    stepId: 'decision-record',
+    artifactPath: firstPath,
+  });
+
+  assert.equal(existsSync(path.join(workspaceRoot, firstPath)), false);
+  assert.equal(existsSync(path.join(workspaceRoot, secondPath)), true);
+  assert.deepEqual(stepState(state, 'decision-record').artifacts.map(({ path: savedPath }) => savedPath), [secondPath]);
+  assert.equal(stepState(state, 'decision-record').status, 'in-progress');
+});
+
+test('registering accumulated artifacts again is idempotent by path before removal', async (t) => {
+  const engine = await loadEngine();
+  const workspaceRoot = createWorkspace(t);
+  const context = { workspaceRoot, runId: 'idempotent-decision', inputFiles: ['workspace/.discovery/test-topic/results/business-epic/story.md'] };
+  const firstPath = 'workspace/.discovery/test-topic/results/decision-record/001-decision.md';
+  const secondPath = 'workspace/.discovery/test-topic/results/decision-record/002-decision.md';
+  artifact(workspaceRoot, firstPath, 'first decision');
+  artifact(workspaceRoot, secondPath, 'second decision');
+
+  await engine.registerWorkflowOutputs({
+    ...context,
+    stepId: 'decision-record',
+    paths: { 'decision-record': firstPath },
+  });
+  await engine.registerWorkflowOutputs({
+    ...context,
+    stepId: 'decision-record',
+    paths: { 'decision-record': firstPath },
+    allowOutOfOrder: true,
+  });
+  await engine.registerWorkflowOutputs({
+    ...context,
+    stepId: 'decision-record',
+    paths: { 'decision-record': secondPath },
+    allowOutOfOrder: true,
+  });
+  const beforeRemoval = await engine.readWorkflowRun(context);
+  assert.deepEqual(stepState(beforeRemoval, 'decision-record').artifacts.map(({ path: savedPath }) => savedPath), [firstPath, secondPath]);
+
+  const state = await engine.removeWorkflowArtifact({
+    ...context,
+    stepId: 'decision-record',
+    artifactPath: firstPath,
+  });
+
+  assert.equal(existsSync(path.join(workspaceRoot, firstPath)), false);
+  assert.equal(existsSync(path.join(workspaceRoot, secondPath)), true);
+  assert.deepEqual(stepState(state, 'decision-record').artifacts.map(({ path: savedPath }) => savedPath), [secondPath]);
 });
 
 
@@ -815,6 +1023,210 @@ test('workflow CLI records output artifacts by verified relative path', (t) => {
 
   assert.equal(result.status, 0, result.stderr);
   assert.equal(JSON.parse(result.stdout).steps['business-epic'].status, 'completed');
+});
+
+test('workflow CLI updates and removes registered artifacts', async (t) => {
+  const engine = await loadEngine();
+  const workspaceRoot = createWorkspace(t);
+  const context = { workspaceRoot, runId: 'cli-artifact-operations', tema: 'test-topic', inputFiles: ['workspace/.discovery/test-topic/results/business-epic/story.md'] };
+  await completeUpstream(engine, context);
+  const solutionPath = `workspace/.discovery/${context.runId}/results/tech-solution-specification/001-spec.md`;
+  const decisionPath = `workspace/.discovery/${context.runId}/results/decision-record/001-decision.md`;
+  const commonArgs = ['--workspace', workspaceRoot, '--run-id', context.runId, '--tema', context.tema];
+
+  const updated = spawnSync(process.execPath, [
+    cliPath, 'artifacts', 'update', ...commonArgs,
+    '--step', 'tech-solution-specification', '--artifact-path', solutionPath,
+  ], { encoding: 'utf8', input: '# CLI-updated solution' });
+  assert.equal(updated.status, 0, updated.stderr);
+  assert.equal(readFileSync(path.join(workspaceRoot, solutionPath), 'utf8'), '# CLI-updated solution');
+  assert.equal(JSON.parse(updated.stdout).steps['tech-solution-specification'].status, 'in-progress');
+
+  const removed = spawnSync(process.execPath, [
+    cliPath, 'artifacts', 'remove', ...commonArgs,
+    '--step', 'decision-record', '--artifact-path', decisionPath,
+  ], { encoding: 'utf8' });
+  assert.equal(removed.status, 0, removed.stderr);
+  assert.equal(existsSync(path.join(workspaceRoot, decisionPath)), false);
+  assert.deepEqual(JSON.parse(removed.stdout).steps['decision-record'], { status: 'pending' });
+});
+
+test('manual output registration stays in progress until explicitly authorized', async (t) => {
+  const engine = await loadEngine();
+  const workspaceRoot = createWorkspace(t);
+  const context = { workspaceRoot, runId: 'manual-out-of-order', tema: 'test-topic', inputFiles: ['workspace/.discovery/test-topic/results/business-epic/story.md'] };
+  const solutionPath = `workspace/.discovery/${context.runId}/results/tech-solution-specification/001-spec.md`;
+  artifact(workspaceRoot, solutionPath, 'solution');
+  const options = {
+    ...context,
+    stepId: 'tech-solution-specification',
+    paths: { 'tech-solution-specification': solutionPath },
+  };
+
+  const progress = await engine.registerWorkflowOutputs(options);
+  assert.equal(stepState(progress, 'tech-solution-specification').status, 'in-progress');
+  const authorized = await engine.registerWorkflowOutputs({ ...options, allowOutOfOrder: true });
+  assert.equal(stepState(authorized, 'tech-solution-specification').status, 'completed');
+});
+
+test('authorized execution can use valid in-progress prerequisites', async (t) => {
+  const engine = await loadEngine();
+  const workspaceRoot = createWorkspace(t);
+  const context = { workspaceRoot, runId: 'in-progress-prerequisite', tema: 'test-topic', inputFiles: ['workspace/.discovery/test-topic/results/business-epic/story.md'] };
+  const solutionPath = `workspace/.discovery/${context.runId}/results/tech-solution-specification/001-spec.md`;
+  artifact(workspaceRoot, solutionPath, 'solution');
+  await engine.registerWorkflowOutputs({
+    ...context,
+    stepId: 'tech-solution-specification',
+    paths: { 'tech-solution-specification': solutionPath },
+  });
+  let received;
+
+  await engine.runWorkflowStep({
+    ...context,
+    stepId: 'decision-record',
+    allowOutOfOrder: true,
+    execute: async ({ prerequisites }) => {
+      received = prerequisites;
+      return {
+        artifacts: {
+          'decision-record': artifact(
+            workspaceRoot,
+            `workspace/.discovery/${context.runId}/results/decision-record/001-decision.md`,
+            'decision',
+          ),
+        },
+      };
+    },
+  });
+
+  assert.equal(received['tech-solution-specification']['tech-solution-specification'].path, solutionPath);
+});
+
+test('out-of-order authorization rejects invalid artifacts', async (t) => {
+  const engine = await loadEngine();
+  const workspaceRoot = createWorkspace(t);
+  const context = { workspaceRoot, runId: 'invalid-out-of-order', tema: 'test-topic', inputFiles: ['workspace/.discovery/test-topic/results/business-epic/story.md'] };
+  const consolidationPath = `workspace/.discovery/${context.runId}/results/discovery-consolidation/001-consolidation.md`;
+  artifact(workspaceRoot, consolidationPath, 'consolidation');
+  await engine.registerWorkflowOutputs({
+    ...context,
+    stepId: 'discovery-consolidation',
+    paths: { 'discovery-consolidation': consolidationPath },
+  });
+  rmSync(path.join(workspaceRoot, consolidationPath));
+
+  await assert.rejects(engine.runWorkflowStep({
+    ...context,
+    stepId: 'tech-solution-specification',
+    allowOutOfOrder: true,
+    execute: async () => ({ artifacts: {} }),
+  }), { code: 'ARTIFACT_NOT_FOUND' });
+});
+
+test('workflow CLI authorizes out-of-order operations only per command and never bypasses the gate', (t) => {
+  const workspaceRoot = createWorkspace(t);
+  const runId = 'cli-out-of-order';
+  const inputPath = 'workspace/.discovery/test-topic/results/business-epic/story.md';
+  const solutionPath = `workspace/.discovery/${runId}/results/tech-solution-specification/001-spec.md`;
+  artifact(workspaceRoot, solutionPath, 'solution');
+  const commonArgs = ['--workspace', workspaceRoot, '--run-id', runId, '--tema', 'test-topic'];
+
+  const denied = spawnSync(process.execPath, [
+    cliPath, 'publish', ...commonArgs,
+    '--step', 'tech-solution-specification', '--input', inputPath,
+  ], { encoding: 'utf8', input: JSON.stringify({ 'tech-solution-specification': '# Solution' }) });
+  assert.notEqual(denied.status, 0);
+  assert.match(denied.stderr, /prerequisite|blocked/i);
+
+  const allowed = spawnSync(process.execPath, [
+    cliPath, 'publish', ...commonArgs,
+    '--step', 'tech-solution-specification', '--input', inputPath, '--allow-out-of-order',
+  ], { encoding: 'utf8', input: JSON.stringify({ 'tech-solution-specification': '# Solution' }) });
+  assert.equal(allowed.status, 0, allowed.stderr);
+  assert.equal(JSON.parse(allowed.stdout).steps['tech-solution-specification'].status, 'completed');
+
+  const story = spawnSync(process.execPath, [
+    cliPath, 'publish', ...commonArgs,
+    '--step', 'story-task-breakdown', '--input', inputPath, '--allow-out-of-order',
+  ], {
+    encoding: 'utf8',
+    input: JSON.stringify({ 'story-task-breakdown': '# Stories', 'execution-plan': '# Plan' }),
+  });
+  assert.notEqual(story.status, 0);
+  assert.match(story.stderr, /validation-gate/i);
+
+  const secondSolutionPath = `workspace/.discovery/${runId}/results/tech-solution-specification/002-spec.md`;
+  artifact(workspaceRoot, secondSolutionPath, 'second solution');
+  const complete = spawnSync(process.execPath, [
+    cliPath, 'complete', ...commonArgs,
+    '--step', 'tech-solution-specification', '--artifact', `tech-solution-specification=${secondSolutionPath}`,
+  ], { encoding: 'utf8' });
+  assert.equal(complete.status, 0, complete.stderr);
+  assert.equal(JSON.parse(complete.stdout).steps['tech-solution-specification'].status, 'in-progress');
+  const authorizedComplete = spawnSync(process.execPath, [
+    cliPath, 'complete', ...commonArgs,
+    '--step', 'tech-solution-specification', '--artifact', `tech-solution-specification=${secondSolutionPath}`,
+    '--allow-out-of-order',
+  ], { encoding: 'utf8' });
+  assert.equal(authorizedComplete.status, 0, authorizedComplete.stderr);
+  assert.equal(JSON.parse(authorizedComplete.stdout).steps['tech-solution-specification'].status, 'completed');
+});
+
+test('loading state invalidates downstream completion when the gate is pending', async (t) => {
+  const engine = await loadEngine();
+  const workspaceRoot = createWorkspace(t);
+  const context = { workspaceRoot, runId: 'stale-downstream-state', inputFiles: ['workspace/.discovery/test-topic/results/business-epic/story.md'] };
+  await completeUpstream(engine, context);
+
+  const storyPath = 'workspace/.discovery/test-topic/results/story-task-breakdown/001-stories.md';
+  const planPath = 'workspace/.discovery/test-topic/results/story-task-breakdown/002-plan.md';
+  const refinementPath = 'workspace/.discovery/test-topic/results/technical-refinement/001-refinement.md';
+  const storyArtifact = artifact(workspaceRoot, storyPath, 'stories');
+  const planArtifact = artifact(workspaceRoot, planPath, 'plan');
+  const refinementArtifact = artifact(workspaceRoot, refinementPath, 'refinement');
+  const statePath = path.join(workspaceRoot, '.smith/runs/stale-downstream-state.json');
+  const persisted = JSON.parse(readFileSync(statePath, 'utf8'));
+  const node = persisted.nodes.find(({ tema }) => tema === 'test-topic');
+  const storyStep = stepState(node, 'story-task-breakdown');
+  storyStep.status = 'completed';
+  storyStep.artifacts = [
+    { name: 'story-task-breakdown', ...storyArtifact },
+    { name: 'execution-plan', ...planArtifact },
+  ];
+  const refinementStep = stepState(node, 'technical-refinement');
+  refinementStep.status = 'completed';
+  refinementStep.artifacts = [{ name: 'technical-refinement', ...refinementArtifact }];
+  writeFileSync(statePath, JSON.stringify(persisted));
+
+  const state = await engine.readWorkflowRun(context);
+  assert.equal(stepState(state, 'story-task-breakdown').status, 'in-progress');
+  assert.equal(stepState(state, 'technical-refinement').status, 'in-progress');
+});
+
+test('out-of-order authorization cannot bypass the validation gate transitively', (t) => {
+  const workspaceRoot = createWorkspace(t);
+  const inputPath = 'workspace/.discovery/test-topic/results/business-epic/story.md';
+  const commonArgs = ['--workspace', workspaceRoot, '--tema', 'test-topic', '--input', inputPath];
+  const completeRunId = 'transitive-gate-complete';
+  const refinementPath = `workspace/.discovery/${completeRunId}/results/technical-refinement/001-refinement.md`;
+  artifact(workspaceRoot, refinementPath, 'refinement');
+
+  const complete = spawnSync(process.execPath, [
+    cliPath, 'complete', '--run-id', completeRunId, ...commonArgs,
+    '--step', 'technical-refinement', '--artifact', `technical-refinement=${refinementPath}`,
+    '--allow-out-of-order',
+  ], { encoding: 'utf8' });
+  assert.notEqual(complete.status, 0);
+  assert.match(complete.stderr, /validation-gate/i);
+
+  const publishRunId = 'transitive-gate-publish';
+  const publish = spawnSync(process.execPath, [
+    cliPath, 'publish', '--run-id', publishRunId, ...commonArgs,
+    '--step', 'technical-refinement', '--allow-out-of-order',
+  ], { encoding: 'utf8', input: JSON.stringify({ 'technical-refinement': '# Refinement' }) });
+  assert.notEqual(publish.status, 0);
+  assert.match(publish.stderr, /validation-gate/i);
 });
 
 test('workflow CLI records validation approval with the exact confirmation', async (t) => {

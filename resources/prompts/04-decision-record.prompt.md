@@ -29,10 +29,12 @@ Reutilize o `run-id` da iniciativa, o mesmo `tema` do subnó e a lista estável 
 node .copilot/plugins/smith/core/cli.mjs ready --workspace . --run-id <run-id> --tema "<tema>" --input <arquivo-fonte> [--input <outro-arquivo-fonte>...]
 ```
 
-Confirme que `decision-record` aparece em `readySteps` e confira a especificação de solução reportada. Se o pré-requisito estiver ausente ou inválido, não prossiga. Identifique as decisões efetivamente tomadas e aprovadas pelo time. Uma menção ou proposta em transcrição não é uma decisão: registre apenas escolhas adotadas. Grave somente as definições aprovadas em `workspace/.discovery/<iniciativa>/results/decision-record/`, com o próximo número disponível e sem sobrescrever arquivos.
+Confira se `decision-record` aparece em `readySteps` e verifique a especificação de solução reportada. Se não estiver pronta, informe quais pré-requisitos faltam, mas ainda pode registrar decisões solicitadas pelo usuário como progresso. Identifique as decisões efetivamente tomadas e aprovadas pelo time. Uma menção ou proposta em transcrição não é uma decisão: registre apenas escolhas adotadas. Grave somente as definições aprovadas em `workspace/.discovery/<iniciativa>/results/decision-record/`, com o próximo número disponível e sem sobrescrever arquivos.
 
 Depois que o arquivo existir, registre seu caminho relativo à raiz do projeto:
 
 ```bash
 node .copilot/plugins/smith/core/cli.mjs complete --workspace . --run-id <run-id> --tema "<tema>" --step decision-record --artifact decision-record=workspace/.discovery/<iniciativa>/results/decision-record/<arquivo>.md --input <arquivo-fonte> [--input <outro-arquivo-fonte>...]
 ```
+
+Sem pré-requisitos satisfeitos, omita `--allow-out-of-order` para registrar o documento como `IN_PROGRESS`. Só inclua essa opção se o usuário autorizar explicitamente concluir esta operação fora de ordem. Isso não substitui o gate de validação: etapas posteriores ao gate continuam bloqueadas até a aprovação literal `APPROVE` com fingerprint válido.

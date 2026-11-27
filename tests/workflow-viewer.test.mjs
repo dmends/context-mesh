@@ -77,10 +77,11 @@ class Element {
 const descendants = (node) => [node, ...node.children.flatMap(descendants)];
 const stepStatuses = Object.fromEntries(Object.entries(StepStatus).map(([key, value]) => [key, {
   value,
-  label: key.toLowerCase(),
+  label: key === 'IN_PROGRESS' ? 'Progresso' : key.toLowerCase(),
   className: {
     PENDING: 'waiting',
     RUNNING: 'active',
+    IN_PROGRESS: 'active',
     COMPLETED: 'done',
     FAILED: 'error',
     ACCUMULATING: 'recorded',
@@ -175,7 +176,10 @@ async function selectFiles(elements, files) {
 
 test('Schema 1 exibe fontes, temas, status e dependências do workflow', async () => {
   const nodes = [
-    makeNode('id-1', 'Tema Alfa', { 'business-epic': { status: StepStatus.COMPLETED } }),
+    makeNode('id-1', 'Tema Alfa', {
+      'business-epic': { status: StepStatus.COMPLETED },
+      'tech-solution-specification': { status: StepStatus.IN_PROGRESS },
+    }),
     makeNode('id-2', 'Tema Beta', { 'business-epic': { status: StepStatus.FAILED } }),
   ];
   const sources = [
@@ -217,7 +221,9 @@ test('Schema 1 exibe fontes, temas, status e dependências do workflow', async (
   const firstTheme = descendants(elements.content).find((item) => item.classList.contains('theme'));
   assert.equal(firstTheme.classList.contains('open'), true);
   assert.equal(descendants(firstTheme).find((item) => item.className === 'theme-header').attributes['aria-expanded'], 'true');
-  assert.equal(descendants(elements.content).filter((item) => item.className.includes('metric-value')).length, 4);
+  assert.equal(descendants(elements.content).filter((item) => item.className.includes('metric-value')).length, 5);
+  assert.ok(descendants(elements.content).some((item) =>
+    item.className === 'metric-label' && item.textContent === 'Progresso'));
   assert.equal(descendants(elements.content).filter((item) => item.attributes['data-dependency']).length, 18);
   assert.ok(descendants(elements.content).some((item) => item.classList.contains('done')));
   assert.ok(descendants(elements.content).some((item) => item.classList.contains('error')));

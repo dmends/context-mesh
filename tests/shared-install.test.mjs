@@ -31,6 +31,7 @@ test('installs a local workflow viewer without overwriting existing files', asyn
   assert.equal(installed.viewerStatus, 'installed');
   assert.match(readFileSync(viewer, 'utf8'), /type="file"/);
   assert.doesNotMatch(readFileSync(viewer, 'utf8'), /__WORKFLOW_STEPS__/);
+  assert.match(readFileSync(viewer, 'utf8'), /"IN_PROGRESS":\{[^}]*"label":"Progresso"/);
   const readme = readFileSync(join(options.targetRoot, '.smith/README.md'), 'utf8');
   assert.match(readme, /Pergunte ao usuário qual será o nome da iniciativa \(`--run-id`\)/);
   assert.match(readme, /Pergunte qual é o primeiro tema de negócio \(`--tema`\)/);

@@ -6,6 +6,7 @@ import { StepStatus } from '../domain/status.mjs';
 import { WorkflowError } from '../domain/errors.mjs';
 import { acquireRunLock, processIsAlive } from './run-lock.mjs';
 import { statePath, createInitialState, createInitialNodeState, saveState } from './state-store.mjs';
+import { removeArtifactFile, replaceArtifactFile } from './artifact-transaction.mjs';
 
 const APPROVAL_CONFIRMATION = 'APPROVE';
 const SOURCE_ROLES = Object.freeze(['legacy', 'target', 'reference', 'integration', 'documentation']);
@@ -20,6 +21,20 @@ function resetStep(current, step, status = StepStatus.PENDING, errorMessage) {
   for (const key of Object.keys(current)) delete current[key];
   Object.assign(current, emptyStepState(step), { status });
   if (errorMessage) current.error = errorMessage;
+}
+
+function markStepInProgress(current, step, errorMessage) {
+  if (step.kind === 'approval') {
+    resetStep(current, step);
+    return;
+  }
+  const hasWork = current.artifacts.length > 0 || current.items.length > 0;
+  current.status = hasWork ? StepStatus.IN_PROGRESS : StepStatus.PENDING;
+  delete current.completedAt;
+  delete current.executionPid;
+  delete current.executionToken;
+  if (errorMessage) current.error = errorMessage;
+  else delete current.error;
 }
 
 export function findNodeByTema(state, tema) {
@@ -163,12 +178,15 @@ async function loadOrCreateState(context) {
     const currentFingerprint = await computeInputFingerprint(context.workspaceRoot, context.inputFiles);
     const previousFingerprint = state.inputFingerprints?.[inputSet];
     if (previousFingerprint && previousFingerprint !== currentFingerprint) {
-      for (const step of WORKFLOW_STEPS) {
-        const current = findStep(state, step.id);
-        if (current?.status === StepStatus.COMPLETED && !step.accumulative && step.kind !== 'approval') {
-          resetStep(current, step);
-          changed = true;
-        }
+      const completedSteps = WORKFLOW_STEPS
+        .filter((step) => {
+          const current = findStep(state, step.id);
+          return current?.status === StepStatus.COMPLETED && !step.accumulative && step.kind !== 'approval';
+        })
+        .map(({ id }) => id);
+      for (const stepId of completedSteps) {
+        invalidateFromStep(state, stepId, 'Workflow inputs changed');
+        changed = true;
       }
     }
     if (previousFingerprint !== currentFingerprint) {
@@ -216,6 +234,18 @@ async function loadOrCreateState(context) {
       }
     }
   }
+  if (gateState?.status !== StepStatus.COMPLETED) {
+    for (const step of WORKFLOW_STEPS) {
+      if (!dependsOnValidationGate(step.id)) continue;
+      const current = findStep(state, step.id);
+      if (current.status === StepStatus.COMPLETED || current.status === StepStatus.ACCUMULATING) {
+        invalidateFromStep(state, step.id, 'Validation gate is not approved');
+        state.updatedAt = new Date().toISOString();
+        changed = true;
+        break;
+      }
+    }
+  }
   if (changed) {
     initiativeState.updatedAt = state.updatedAt;
     await saveState(filePath, initiativeState);
@@ -243,7 +273,8 @@ function validateArtifactList(artifacts, label) {
   for (const artifact of artifacts) {
     if (!isRecord(artifact) || typeof artifact.name !== 'string' || !artifact.name ||
         typeof artifact.path !== 'string' || !artifact.path ||
-        (artifact.groupId !== undefined && (typeof artifact.groupId !== 'string' || !artifact.groupId))) {
+        (artifact.groupId !== undefined && (typeof artifact.groupId !== 'string' || !artifact.groupId)) ||
+        (artifact.sha256 !== undefined && !/^[a-f0-9]{64}$/.test(artifact.sha256))) {
       throw new WorkflowError('INVALID_RUN_STATE', `${label} contains an invalid artifact reference`);
     }
     const identity = `${artifact.groupId ?? ''}\0${artifact.name}`;
@@ -386,7 +417,11 @@ export async function createArtifactReference(workspaceRoot, artifactRelativePat
     ) {
       throw new ArtifactValidationError('Artifact resolves outside the workspace');
     }
-    await readFile(realArtifact);
+    const content = await readFile(realArtifact);
+    return {
+      path: artifactRelativePath,
+      sha256: createHash('sha256').update(content).digest('hex'),
+    };
   } catch (error) {
     if (error instanceof ArtifactValidationError) {
       throw error;
@@ -396,9 +431,6 @@ export async function createArtifactReference(workspaceRoot, artifactRelativePat
     });
   }
 
-  return {
-    path: artifactRelativePath,
-  };
 }
 
 async function verifyArtifact(workspaceRoot, reference) {
@@ -514,7 +546,10 @@ async function verifyStoredArtifacts(context, step, artifacts) {
     }
     for (const artifact of group) {
       await assertOutputLocation(context, step, artifact.path);
-      await verifyArtifact(context.workspaceRoot, artifact);
+      const actualArtifact = await verifyArtifact(context.workspaceRoot, artifact);
+      if (artifact.sha256 !== actualArtifact.sha256) {
+        throw new ArtifactValidationError(`Stored artifact changed since registration: ${artifact.path}`);
+      }
     }
   }
 }
@@ -532,7 +567,12 @@ function computeApprovalFingerprint(state, gate) {
     .map((depId) => {
       const artifacts = findStep(state, depId)?.artifacts ?? [];
       const references = [...artifacts]
-        .map(({ name, path, groupId }) => ({ name, path, ...(groupId ? { groupId } : {}) }))
+        .map(({ name, path, groupId, sha256 }) => ({
+          name,
+          path,
+          ...(groupId ? { groupId } : {}),
+          ...(sha256 ? { sha256 } : {}),
+        }))
         .sort((left, right) => `${left.name}\0${left.path}\0${left.groupId ?? ''}`.localeCompare(`${right.name}\0${right.path}\0${right.groupId ?? ''}`));
       return JSON.stringify({ stepType: depId, artifacts: references });
     })
@@ -561,12 +601,17 @@ async function computeInputFingerprint(workspaceRoot, inputFiles) {
 function sameArtifactReferences(current, approved) {
   if (!Array.isArray(current) || !Array.isArray(approved)) return false;
   const normalize = (artifacts) => artifacts
-    .map(({ name, path, groupId }) => ({ name, path, ...(groupId ? { groupId } : {}) }))
+    .map(({ name, path, groupId, sha256 }) => ({
+      name,
+      path,
+      ...(groupId ? { groupId } : {}),
+      ...(sha256 ? { sha256 } : {}),
+    }))
     .sort((left, right) => `${left.name}\0${left.path}\0${left.groupId ?? ''}`.localeCompare(`${right.name}\0${right.path}\0${right.groupId ?? ''}`));
   return JSON.stringify(normalize(current)) === JSON.stringify(normalize(approved));
 }
 
-function invalidateFromStep(state, stepId, reason) {
+function invalidateFromStep(state, stepId, reason, includeRoot = true) {
   const affected = new Set([stepId]);
   let changed = true;
   while (changed) {
@@ -580,8 +625,9 @@ function invalidateFromStep(state, stepId, reason) {
   }
 
   for (const id of affected) {
+    if (!includeRoot && id === stepId) continue;
     const definition = WORKFLOW_STEPS.find(({ id: candidate }) => candidate === id);
-    resetStep(findStep(state, id), definition, id === stepId ? StepStatus.FAILED : StepStatus.PENDING, id === stepId ? reason : undefined);
+    markStepInProgress(findStep(state, id), definition, id === stepId ? reason : undefined);
   }
 }
 
@@ -595,12 +641,37 @@ function groupArtifactReferences(artifacts) {
   return [...grouped.values()];
 }
 
-async function validatedPrerequisites(workspaceRoot, state, step) {
+function dependsOnValidationGate(stepId, visited = new Set()) {
+  if (stepId === 'validation-gate') return true;
+  if (visited.has(stepId)) return false;
+  visited.add(stepId);
+  const step = WORKFLOW_STEPS.find(({ id }) => id === stepId);
+  return Boolean(step?.requires.some((dependencyId) => dependsOnValidationGate(dependencyId, visited)));
+}
+
+async function validatedPrerequisites(context, state, step, allowOutOfOrder = false) {
+  if (step.id !== 'validation-gate' && dependsOnValidationGate(step.id) &&
+      findStep(state, 'validation-gate')?.status !== StepStatus.COMPLETED) {
+    throw new WorkflowError('PREREQ_NOT_MET', 'Workflow blocked: prerequisite "validation-gate" is incomplete');
+  }
+
   const prerequisites = {};
   for (const dependencyId of step.requires) {
     const dependency = findStep(state, dependencyId);
-    if (!dependency || (dependency.status !== StepStatus.COMPLETED && dependency.status !== StepStatus.ACCUMULATING)) {
+    if (!dependency) {
       throw new WorkflowError('PREREQ_NOT_MET', `Workflow blocked: prerequisite "${dependencyId}" is incomplete`);
+    }
+    const completed = dependency.status === StepStatus.COMPLETED || dependency.status === StepStatus.ACCUMULATING;
+    if (!completed) {
+      if (!allowOutOfOrder || dependencyId === 'validation-gate') {
+        throw new WorkflowError('PREREQ_NOT_MET', `Workflow blocked: prerequisite "${dependencyId}" is incomplete`);
+      }
+      if (dependency.artifacts.length > 0) {
+        const definition = WORKFLOW_STEPS.find(({ id }) => id === dependencyId);
+        await verifyStoredArtifacts(context, definition, dependency.artifacts);
+      } else {
+        continue;
+      }
     }
 
     if (dependencyId === 'validation-gate') {
@@ -611,7 +682,7 @@ async function validatedPrerequisites(workspaceRoot, state, step) {
         for (const group of groups) {
           const verified = {};
           for (const [name, reference] of Object.entries(group)) {
-            verified[name] = await verifyArtifact(workspaceRoot, reference);
+            verified[name] = await verifyArtifact(context.workspaceRoot, reference);
           }
           verifiedGroups.push(verified);
         }
@@ -626,7 +697,7 @@ async function validatedPrerequisites(workspaceRoot, state, step) {
       for (const group of groups) {
         const verified = {};
         for (const [name, reference] of Object.entries(group)) {
-          verified[name] = await verifyArtifact(workspaceRoot, reference);
+          verified[name] = await verifyArtifact(context.workspaceRoot, reference);
         }
         verifiedGroups.push(verified);
       }
@@ -825,7 +896,7 @@ export async function getReadyStepDetails(context) {
     let reconciled = false;
     for (const current of state.steps) {
       if (current.status === StepStatus.RUNNING && !(await processIsAlive(current.executionPid))) {
-        current.status = StepStatus.FAILED;
+        current.status = current.artifacts.length > 0 ? StepStatus.IN_PROGRESS : StepStatus.FAILED;
         current.error = 'Previous stage execution was interrupted and can be retried';
         delete current.executionPid;
         delete current.executionToken;
@@ -840,16 +911,13 @@ export async function getReadyStepDetails(context) {
     const ready = [];
     for (const step of WORKFLOW_STEPS) {
       const current = findStep(state, step.id);
-      if (current.status !== StepStatus.PENDING && current.status !== StepStatus.FAILED
+      if (current.status !== StepStatus.PENDING && current.status !== StepStatus.FAILED &&
+          current.status !== StepStatus.IN_PROGRESS
           && !(step.accumulative && current.status === StepStatus.ACCUMULATING)) {
         continue;
       }
       try {
-        const prerequisites = await validatedPrerequisites(
-          resolvedContext.workspaceRoot,
-          state,
-          step,
-        );
+        const prerequisites = await validatedPrerequisites(resolvedContext, state, step);
         const selected = await selectedSources(resolvedContext.workspaceRoot, record.initiativeState, step);
         const detail = {
           id: step.id,
@@ -887,10 +955,13 @@ async function selectedSources(workspaceRoot, state, step) {
   }));
 }
 
-export async function registerWorkflowOutputs({ stepId, paths, ...rawContext }) {
+export async function registerWorkflowOutputs({ stepId, paths, allowOutOfOrder = false, ...rawContext }) {
   const context = await resolveRunContext(rawContext);
   const step = WORKFLOW_STEPS.find(({ id }) => id === stepId);
   if (!step?.outputDirectory) throw new WorkflowError('ARTIFACT_NOT_FOUND', `Step "${stepId}" does not register documents`);
+  if (typeof allowOutOfOrder !== 'boolean') {
+    throw new WorkflowError('INVALID_ARGUMENT', 'allowOutOfOrder must be a boolean');
+  }
   assertOutputKeys(step, paths);
   const artifacts = {};
   for (const name of step.outputs) {
@@ -900,18 +971,111 @@ export async function registerWorkflowOutputs({ stepId, paths, ...rawContext }) 
   return withRunLock(context, async () => {
     const record = await loadOrCreateState(context);
     const { state } = record;
-    const completedAt = new Date().toISOString();
+    let prerequisitesComplete = true;
+    try {
+      await validatedPrerequisites(context, state, step);
+    } catch (error) {
+      if (error.code !== 'PREREQ_NOT_MET') throw error;
+      prerequisitesComplete = false;
+    }
+    if (allowOutOfOrder) {
+      await validatedPrerequisites(context, state, step, true);
+      prerequisitesComplete = true;
+    }
+    const updatedAt = new Date().toISOString();
     const current = findStep(state, stepId);
-    const groupId = randomUUID();
+    const previousArtifacts = current.artifacts;
+    const existingGroup = step.accumulative && groupArtifactReferences(previousArtifacts).find((group) =>
+      Object.keys(group).length === step.outputs.length &&
+      step.outputs.every((name) => group[name]?.path === artifacts[name].path));
+    if (step.accumulative && !existingGroup &&
+        previousArtifacts.some(({ path }) => Object.values(artifacts).some((reference) => reference.path === path))) {
+      throw new WorkflowError('ARTIFACT_NOT_FOUND', 'An artifact path is already registered in a different group');
+    }
+    const groupId = existingGroup?.[step.outputs[0]]?.groupId ?? randomUUID();
     const registered = Object.entries(artifacts)
       .map(([name, reference]) => ({ name, ...reference, ...(step.accumulative ? { groupId } : {}) }));
-    current.status = step.accumulative ? StepStatus.ACCUMULATING : StepStatus.COMPLETED;
-    current.artifacts = step.accumulative ? [...current.artifacts, ...registered] : registered;
+    const existingGroupReferences = existingGroup ? new Map(
+      step.outputs.map((name) => [existingGroup[name], registered.find(({ name: outputName }) => outputName === name)]),
+    ) : undefined;
+    const nextArtifacts = existingGroupReferences
+      ? previousArtifacts.map((reference) => existingGroupReferences.get(reference) ?? reference)
+      : step.accumulative ? [...previousArtifacts, ...registered] : registered;
+    const artifactsChanged = !sameArtifactReferences(nextArtifacts, previousArtifacts);
+    current.status = prerequisitesComplete
+      ? (step.accumulative ? StepStatus.ACCUMULATING : StepStatus.COMPLETED)
+      : StepStatus.IN_PROGRESS;
+    current.artifacts = nextArtifacts;
     if (!step.accumulative) current.items = [];
-    current.completedAt = completedAt;
-    state.updatedAt = completedAt;
+    if (prerequisitesComplete) current.completedAt = updatedAt;
+    else delete current.completedAt;
+    if (artifactsChanged) invalidateFromStep(state, stepId, 'Registered outputs changed', false);
+    state.updatedAt = updatedAt;
     await saveCurrentState(context, record);
     return state;
+  });
+}
+
+async function findRegisteredArtifact(context, step, current, artifactPath) {
+  const artifact = current.artifacts.find(({ path }) => path === artifactPath);
+  if (!artifact) {
+    throw new WorkflowError('ARTIFACT_NOT_FOUND', `Artifact is not registered for "${step.id}": ${artifactPath}`);
+  }
+  await assertOutputLocation(context, step, artifactPath);
+  await verifyArtifact(context.workspaceRoot, artifact);
+  return artifact;
+}
+
+export async function updateWorkflowArtifact({ stepId, artifactPath, content, ...rawContext }) {
+  const context = await resolveRunContext(rawContext);
+  const step = WORKFLOW_STEPS.find(({ id }) => id === stepId);
+  if (!step?.outputDirectory) {
+    throw new WorkflowError('ARTIFACT_NOT_FOUND', `Step "${stepId}" does not manage documents`);
+  }
+  if (typeof content !== 'string') {
+    throw new WorkflowError('INVALID_ARGUMENT', 'Artifact content must be a string');
+  }
+
+  return withRunLock(context, async () => {
+    const record = await loadOrCreateState(context);
+    const current = findStep(record.state, stepId);
+    const registered = await findRegisteredArtifact(context, step, current, artifactPath);
+    const destination = resolve(context.workspaceRoot, artifactPath);
+    await replaceArtifactFile({
+      destination,
+      content,
+      commit: async () => {
+        invalidateFromStep(record.state, stepId);
+        registered.sha256 = createHash('sha256').update(content).digest('hex');
+        record.state.updatedAt = new Date().toISOString();
+        await saveCurrentState(context, record);
+      },
+    });
+    return record.state;
+  });
+}
+
+export async function removeWorkflowArtifact({ stepId, artifactPath, ...rawContext }) {
+  const context = await resolveRunContext(rawContext);
+  const step = WORKFLOW_STEPS.find(({ id }) => id === stepId);
+  if (!step?.outputDirectory) {
+    throw new WorkflowError('ARTIFACT_NOT_FOUND', `Step "${stepId}" does not manage documents`);
+  }
+
+  return withRunLock(context, async () => {
+    const record = await loadOrCreateState(context);
+    const current = findStep(record.state, stepId);
+    const artifact = await findRegisteredArtifact(context, step, current, artifactPath);
+    await removeArtifactFile({
+      destination: resolve(context.workspaceRoot, artifact.path),
+      commit: async () => {
+        current.artifacts = current.artifacts.filter((candidate) => candidate.path !== artifactPath);
+        invalidateFromStep(record.state, stepId);
+        record.state.updatedAt = new Date().toISOString();
+        await saveCurrentState(context, record);
+      },
+    });
+    return record.state;
   });
 }
 
@@ -944,10 +1108,13 @@ function extractDocumentSlug(markdown, stepId) {
   return null;
 }
 
-export async function publishWorkflowStep({ stepId, documents, documentName, ...rawContext }) {
+export async function publishWorkflowStep({ stepId, documents, documentName, allowOutOfOrder = false, ...rawContext }) {
   const context = await resolveRunContext(rawContext);
   const step = WORKFLOW_STEPS.find(({ id }) => id === stepId);
   if (!step?.outputDirectory) throw new WorkflowError('ARTIFACT_NOT_FOUND', `Step "${stepId}" does not publish documents`);
+  if (typeof allowOutOfOrder !== 'boolean') {
+    throw new WorkflowError('INVALID_ARGUMENT', 'allowOutOfOrder must be a boolean');
+  }
   const names = Object.keys(documents ?? {});
   if (names.length !== step.outputs.length ||
     !step.outputs.every((name) => typeof documents[name] === 'string' && documents[name].trim())) {
@@ -964,6 +1131,7 @@ export async function publishWorkflowStep({ stepId, documents, documentName, ...
     return await runWorkflowStep({
       ...rawContext,
       stepId,
+      allowOutOfOrder,
       execute: async () => {
         await checkOutputDirectory(context.workspaceRoot, directory, true);
         const absolute = resolve(context.workspaceRoot, directory);
@@ -1008,10 +1176,13 @@ export async function publishWorkflowStep({ stepId, documents, documentName, ...
 }
 
 export async function runWorkflowStep(options) {
-  const { stepId, execute, ...rawContext } = options;
+  const { stepId, execute, allowOutOfOrder = false, ...rawContext } = options;
   const context = await resolveRunContext(rawContext);
   if (typeof execute !== 'function') {
     throw new WorkflowError('INVALID_EXECUTOR', 'execute must be a function');
+  }
+  if (typeof allowOutOfOrder !== 'boolean') {
+    throw new WorkflowError('INVALID_ARGUMENT', 'allowOutOfOrder must be a boolean');
   }
 
   const step = WORKFLOW_STEPS.find((candidate) => candidate.id === stepId);
@@ -1037,7 +1208,7 @@ export async function runWorkflowStep(options) {
     if (current.status === StepStatus.RUNNING && (await processIsAlive(current.executionPid))) {
       throw new WorkflowError('STEP_LOCKED', `Workflow step "${stepId}" is already running`);
     }
-    const prerequisites = await validatedPrerequisites(context.workspaceRoot, state, step);
+    const prerequisites = await validatedPrerequisites(context, state, step, allowOutOfOrder);
     const sources = await selectedSources(context.workspaceRoot, record.initiativeState, step);
     const executionToken = randomUUID();
     current.status = StepStatus.RUNNING;
@@ -1088,9 +1259,8 @@ export async function runWorkflowStep(options) {
       const { state } = record;
       const current = findStep(state, stepId);
       if (current.executionToken === preparation.executionToken) {
-        current.status = StepStatus.FAILED;
+        current.status = current.artifacts.length > 0 ? StepStatus.IN_PROGRESS : StepStatus.FAILED;
         current.error = error instanceof Error ? error.message : String(error);
-        current.artifacts = [];
         delete current.executionPid;
         delete current.executionToken;
         state.updatedAt = new Date().toISOString();
@@ -1118,7 +1288,7 @@ export async function approveValidationGate(options) {
       throw new WorkflowError('APPROVAL_FINGERPRINT_MISMATCH', 'Approval fingerprint does not match current state; artifacts may have changed since review');
     }
 
-    const validated = await validatedPrerequisites(context.workspaceRoot, state, gate);
+    const validated = await validatedPrerequisites(context, state, gate);
 
     const approvedArtifacts = gate.requires.map((stepType) => ({
       stepType,

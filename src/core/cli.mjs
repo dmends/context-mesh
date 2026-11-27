@@ -9,6 +9,8 @@ import {
   publishWorkflowStep,
   readWorkflowRun,
   registerWorkflowOutputs,
+  updateWorkflowArtifact,
+  removeWorkflowArtifact,
   addSource,
   updateSource,
   removeSource,
@@ -21,8 +23,9 @@ const USAGE = `Usage:
   node plugin/core/cli.mjs init --run-id ID --tema TEMA
   node plugin/core/cli.mjs start|resume|status --run-id ID --tema TEMA --input PATH [--input PATH...]
   node plugin/core/cli.mjs ready --run-id ID --tema TEMA --input PATH [--input PATH...]
-  node plugin/core/cli.mjs publish --run-id ID --tema TEMA --step ID --input PATH [--name SLUG] < documents.json
-  node plugin/core/cli.mjs complete --run-id ID --tema TEMA --step ID --artifact NAME=PATH [--artifact NAME=PATH...] [--input PATH]
+  node plugin/core/cli.mjs publish --run-id ID --tema TEMA --step ID --input PATH [--name SLUG] [--allow-out-of-order] < documents.json
+  node plugin/core/cli.mjs complete --run-id ID --tema TEMA --step ID --artifact NAME=PATH [--artifact NAME=PATH...] [--input PATH] [--allow-out-of-order]
+  node plugin/core/cli.mjs artifacts update|remove --run-id ID --tema TEMA --step ID --artifact-path PATH
   node plugin/core/cli.mjs approve --run-id ID --tema TEMA --input PATH [--input PATH...] [--confirmation APPROVE]
   node plugin/core/cli.mjs sources add|update --run-id ID [--workspace PATH] < source.json
   node plugin/core/cli.mjs sources remove --run-id ID --source-id ID [--workspace PATH]
@@ -130,6 +133,44 @@ function parseArguments(args) {
     };
   }
 
+  if (command === 'artifacts') {
+    const [operation, ...artifactArgs] = rest;
+    if (!['update', 'remove'].includes(operation)) {
+      throw new WorkflowError('INVALID_ARGUMENT', 'artifacts requires update or remove');
+    }
+    const options = {};
+    const keys = new Map([
+      ['--workspace', 'workspaceRoot'],
+      ['--run-id', 'runId'],
+      ['--tema', 'tema'],
+      ['--step', 'stepId'],
+      ['--artifact-path', 'artifactPath'],
+    ]);
+    for (let index = 0; index < artifactArgs.length; index += 1) {
+      const option = artifactArgs[index];
+      const key = keys.get(option);
+      const value = artifactArgs[index + 1];
+      if (!key || !value || value.startsWith('--') || options[key] !== undefined) {
+        throw new WorkflowError('INVALID_ARGUMENT', `Invalid or repeated artifacts option: ${option}`);
+      }
+      options[key] = value;
+      index += 1;
+    }
+    if (!options.runId || !options.tema || !options.stepId || !options.artifactPath) {
+      throw new WorkflowError('INVALID_ARGUMENT', 'artifacts requires --run-id, --tema, --step, and --artifact-path');
+    }
+    return {
+      command,
+      operation,
+      workspaceRoot: options.workspaceRoot ?? process.cwd(),
+      runId: options.runId,
+      tema: options.tema,
+      stepId: options.stepId,
+      artifactPath: options.artifactPath,
+      inputFiles: [],
+    };
+  }
+
   const options = { inputs: [], artifacts: [] };
   const singular = new Map([
     ['--workspace', 'workspaceRoot'],
@@ -142,6 +183,13 @@ function parseArguments(args) {
   ]);
   for (let index = 0; index < rest.length; index += 1) {
     const option = rest[index];
+    if (option === '--allow-out-of-order') {
+      if (options.allowOutOfOrder) {
+        throw new WorkflowError('INVALID_ARGUMENT', `${option} can only be provided once`);
+      }
+      options.allowOutOfOrder = true;
+      continue;
+    }
     const value = rest[index + 1];
     if (!value || value.startsWith('--')) {
       throw new WorkflowError('INVALID_ARGUMENT', `Missing value for ${option}`);
@@ -178,6 +226,9 @@ function parseArguments(args) {
     throw new WorkflowError('INVALID_ARGUMENT', '--artifact is only valid with complete');
   }
   if (command === 'publish' && !options.stepId) throw new WorkflowError('INVALID_ARGUMENT', 'publish requires --step');
+  if (options.allowOutOfOrder && !['complete', 'publish'].includes(command)) {
+    throw new WorkflowError('INVALID_ARGUMENT', '--allow-out-of-order is only valid with complete or publish');
+  }
   if (!['complete', 'publish'].includes(command) && options.stepId) {
     throw new WorkflowError('INVALID_ARGUMENT', '--step is only valid with complete or publish');
   }
@@ -202,6 +253,7 @@ function parseArguments(args) {
     confirmation: options.confirmation,
     approvalFingerprint: options.approvalFingerprint,
     artifactArguments: options.artifacts,
+    allowOutOfOrder: options.allowOutOfOrder ?? false,
   };
 }
 
@@ -259,6 +311,12 @@ async function main() {
     process.stdout.write(`${USAGE}\n`);
     return;
   }
+  const context = {
+    workspaceRoot: options.workspaceRoot,
+    runId: options.runId,
+    tema: options.tema,
+    inputFiles: options.inputFiles,
+  };
   if (options.command === 'sources') {
     let result;
     if (options.operation === 'add' || options.operation === 'update') {
@@ -284,6 +342,22 @@ async function main() {
     process.stdout.write(`${JSON.stringify(options.operation === 'list' ? { sources: result } : result, null, 2)}\n`);
     return;
   }
+  if (options.command === 'artifacts') {
+    let state;
+    if (options.operation === 'update') {
+      if (process.stdin.isTTY) {
+        throw new WorkflowError('INVALID_ARGUMENT', 'artifacts update expects Markdown content on stdin');
+      }
+      let content = '';
+      process.stdin.setEncoding('utf8');
+      for await (const chunk of process.stdin) content += chunk;
+      state = await updateWorkflowArtifact({ ...context, stepId: options.stepId, artifactPath: options.artifactPath, content });
+    } else {
+      state = await removeWorkflowArtifact({ ...context, stepId: options.stepId, artifactPath: options.artifactPath });
+    }
+    process.stdout.write(`${JSON.stringify(summarize(state, await getReadyStepDetails(context), options.runId, await listSources(context)), null, 2)}\n`);
+    return;
+  }
   if (options.command === 'template') {
     const step = WORKFLOW_STEPS.find(({ id }) => id === options.stepId);
     if (!step || !step.templates.length) throw new WorkflowError('ARTIFACT_NOT_FOUND', `No template for step: ${options.stepId}`);
@@ -298,13 +372,6 @@ async function main() {
     process.stdout.write(contents.map((content, index) => contents.length === 1 ? content : `<!-- ${step.templates[index]} -->\n${content}`).join('\n\n'));
     return;
   }
-
-  const context = {
-    workspaceRoot: options.workspaceRoot,
-    runId: options.runId,
-    tema: options.tema,
-    inputFiles: options.inputFiles,
-  };
 
   if (options.command === 'init') {
     const state = await readWorkflowRun(context);
@@ -332,7 +399,13 @@ async function main() {
     if (!documents || typeof documents !== 'object' || Array.isArray(documents)) {
       throw new WorkflowError('INVALID_ARGUMENT', 'publish expects a JSON object mapping artifact names to Markdown on stdin');
     }
-    const state = await publishWorkflowStep({ ...context, stepId: options.stepId, documentName: options.documentName, documents });
+    const state = await publishWorkflowStep({
+      ...context,
+      stepId: options.stepId,
+      documentName: options.documentName,
+      documents,
+      allowOutOfOrder: options.allowOutOfOrder,
+    });
     process.stdout.write(`${JSON.stringify(summarize(state, await getReadyStepDetails(context), options.runId, await listSources(context)), null, 2)}\n`);
     return;
   }
@@ -342,6 +415,7 @@ async function main() {
       ...context,
       stepId: options.stepId,
       paths: parseArtifacts(options.artifactArguments),
+      allowOutOfOrder: options.allowOutOfOrder,
     });
     process.stdout.write(`${JSON.stringify(summarize(state, await getReadyStepDetails(context), options.runId, await listSources(context)), null, 2)}\n`);
     return;

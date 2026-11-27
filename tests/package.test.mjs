@@ -152,6 +152,7 @@ const EXPECTED_PACKAGE_FILES = [
   'config/env.mjs',
   'domain/errors.mjs',
   'domain/status.mjs',
+  'core/artifact-transaction.mjs',
   'core/cli.mjs',
   'core/engine.mjs',
   'core/run-lock.mjs',

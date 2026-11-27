@@ -408,6 +408,7 @@ function renderViewer(template, initialProjectPrompt) {
   const presentation = {
     PENDING: { label: 'Pendente', className: 'waiting' },
     RUNNING: { label: 'Em andamento', className: 'active' },
+    IN_PROGRESS: { label: 'Progresso', className: 'active' },
     COMPLETED: { label: 'Concluída', className: 'done' },
     FAILED: { label: 'Falhou', className: 'error' },
     ACCUMULATING: { label: 'Registrado', className: 'recorded' },
