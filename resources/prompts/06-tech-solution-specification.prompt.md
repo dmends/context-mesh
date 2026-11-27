@@ -18,7 +18,7 @@ Não altere instruções globais do projeto, configurações pessoais ou MCP; n�
 - **Saída registrada:** `tech-solution-specification`.
 - **Template instalado:** `.copilot/plugins/smith/templates/005-tech-solution-specification.md`.
 
-**Economia de Contexto e Subagentes:** Delegue via MCP aos CLIs locais Claude Code/Antigravity a exploração do código e dos artefatos, dividindo por serviços ou fluxos e preservando evidências. Use acesso local ou referências a arquivos em vez de copiar conteúdo extenso. Antes de cada chamada, consulte a lista de modelos e escolha a faixa de menor custo. Nunca inclua credenciais ou segredos.
+**Economia de Contexto e Subagentes:** Delegue via MCP aos CLIs locais Claude Code/Antigravity a exploração do código e dos artefatos, dividindo por serviços ou fluxos e preservando evidências. Use acesso local ou referências a arquivos em vez de copiar conteúdo extenso. Ao fornecer caminhos de arquivos ou diretórios ao MCP, use somente caminhos absolutos do filesystem local; resolva qualquer caminho relativo antes da chamada. Antes de cada chamada, consulte a lista de modelos e escolha a faixa de menor custo. Nunca inclua credenciais ou segredos.
 
 Reutilize o `run-id` da iniciativa, o mesmo `tema` do subnó e a lista estável de arquivos-fonte, sem incluir artefatos gerados nos argumentos `--input`. Os caminhos são relativos à raiz do projeto. Antes de redigir, execute:
 

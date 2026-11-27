@@ -19,7 +19,7 @@ Não altere instruções globais do projeto, configurações pessoais ou MCP; n�
 - **Saída registrada:** `business-epic`.
 - **Template instalado:** `.copilot/plugins/smith/templates/004-business-epic.md`.
 
-**Economia de Contexto e Subagentes:** Transcrições e histórias brutas costumam ser extensas. Não carregue todo o conteúdo na conversa principal; divida leituras e extrações em tarefas e delegue-as via MCP aos CLIs locais Claude Code/Antigravity. Peça sínteses concisas e consulte a lista de modelos antes de cada chamada, escolhendo a faixa de menor custo. Nunca inclua credenciais ou segredos.
+**Economia de Contexto e Subagentes:** Transcrições e histórias brutas costumam ser extensas. Não carregue todo o conteúdo na conversa principal; divida leituras e extrações em tarefas e delegue-as via MCP aos CLIs locais Claude Code/Antigravity. Peça sínteses concisas. Ao fornecer caminhos de arquivos ou diretórios ao MCP, use somente caminhos absolutos do filesystem local; resolva qualquer caminho relativo antes da chamada. Consulte a lista de modelos antes de cada chamada, escolhendo a faixa de menor custo. Nunca inclua credenciais ou segredos.
 
 Use `run-id` como ID estável da iniciativa (por exemplo, `motor-recorrencia`) e `tema` como nome do subnó (por exemplo, `Regra da Primeira Parcela`). Vários temas compartilham o mesmo `run-id`; mantenha o mesmo tema e a mesma lista de arquivos-fonte em todos os comandos deste subnó. Se uma fonte for diretório, liste recursivamente os arquivos regulares pertinentes e passe cada arquivo como `--input`; nunca passe diretórios. Os caminhos `--input` são relativos à raiz do projeto e não devem incluir artefatos gerados. Antes de redigir, execute:
 

@@ -27,7 +27,7 @@ Smith estrutura o trabalho de desenvolvimento em fases sequenciais rastreadas pe
 
 ## Regras de Execução e Economia de Contexto
 - Não concentre na conversa principal leituras extensas, buscas amplas ou análises que possam ser divididas. Decomponha o trabalho em tarefas independentes e delegue-as; peça aos agentes apenas conclusões concisas, evidências e referências, e sintetize/valide os resultados na conversa principal.
-- Os MCPs Claude e Antigravity deste ambiente são interfaces para CLIs locais dos agentes, não um motivo para evitar delegação de código ou arquivos locais. Claude pode explorar o filesystem; Antigravity pode receber referências de arquivos com `@caminho`. Não copie arquivos longos para o contexto principal ou para o prompt se o agente puder lê-los diretamente.
+- Os MCPs Claude e Antigravity deste ambiente são interfaces para CLIs locais dos agentes, não um motivo para evitar delegação de código ou arquivos locais. Claude pode explorar o filesystem; Antigravity pode receber referências de arquivos com `@/caminho/absoluto/arquivo`. Não copie arquivos longos para o contexto principal ou para o prompt se o agente puder lê-los diretamente.
 - Antes de cada chamada, consulte a lista de modelos do agente e escolha a faixa de menor custo disponível; use o ID exato listado e não fixe IDs nas instruções, pois o catálogo muda. Quando o catálogo não informar preço entre modelos da mesma faixa, prefira a variante de menor esforço sem presumir o custo exato.
 - Use Claude e Antigravity para tarefas distintas e paralelizáveis quando isso reduzir o trabalho/contexto principal; evite duplicar a mesma análise. Não inclua credenciais, tokens ou segredos nos prompts.
 - Se a ferramenta de delegação necessária não estiver disponível, use subagentes nativos quando existirem; caso contrário, prossiga diretamente e informe a limitação somente se afetar o resultado.
@@ -125,13 +125,14 @@ Consulte `sources list` para obter fontes, papéis e escopos. As etapas recebem 
 
 # Orquestração Multi-Agente via MCP
 Use o MCP `mcp-agents` como interface para os CLIs locais Claude Code e Antigravity. Delegue buscas, leituras e análises que possam ser separadas em tarefas delimitadas, inclusive no código e nos arquivos locais do projeto; mantenha na conversa principal apenas sínteses, decisões e validações. Não inclua credenciais, tokens ou segredos nos prompts. Evite chamadas redundantes e escolha sempre a faixa de menor custo listada para cada agente.
+Ao fornecer caminhos de arquivos ou diretórios ao MCP, use somente caminhos absolutos do filesystem local; resolva qualquer caminho relativo antes da chamada. No Antigravity, escreva referências de arquivo como `@/caminho/absoluto/arquivo`.
 
 ## 1. Regras de roteamento
 
 ### Claude Code (`mcp-agents-Ask-Claude`)
 * **Use para:** buscas locais, leitura de arquivos, rastreamento de fluxos e análises independentes que possam ser resumidas para a conversa principal.
 * **Modelo:** antes de cada chamada, use `mcp-agents-List-Claude-Models` e escolha a faixa de menor custo indicada pelo catálogo (atualmente `FAST`); passe o ID exato listado. Se houver várias opções e o catálogo não informar preços, prefira a variante de menor esforço, sem afirmar que ela é comprovadamente a mais barata.
-* **Como pedir:** Claude Code tem acesso ao filesystem local; informe o objetivo, os caminhos/áreas relevantes, os limites de leitura e o formato conciso do resultado. Não copie o conteúdo dos arquivos no prompt se Claude puder lê-los diretamente.
+* **Como pedir:** Claude Code tem acesso ao filesystem local; informe o objetivo, os caminhos absolutos relevantes, os limites de leitura e o formato conciso do resultado. Não copie o conteúdo dos arquivos no prompt se Claude puder lê-los diretamente.
 * **Escopo:** peça análise ou recomendações; implementação e validação continuam com o agente principal, salvo solicitação explícita do usuário.
 * **Permissões:** não solicite modos que ignorem as verificações de segurança ou aprovações do Claude Code.
 
@@ -139,7 +140,7 @@ Use o MCP `mcp-agents` como interface para os CLIs locais Claude Code e Antigrav
 * **O que é:** a ferramenta chama o CLI Antigravity (`agy`), que pode executar modelos de diferentes famílias. Gemini é uma família de modelos disponível no Antigravity, não o nome da ferramenta de delegação.
 * **Use para:** buscas, leituras e análises independentes em arquivos locais, especialmente quando dividir a investigação reduzir o contexto da conversa principal.
 * **Modelo:** antes de cada chamada, use `mcp-agents-List-Antigravity-Models` e escolha a faixa de menor custo indicada pelo catálogo (atualmente `FAST`); passe o ID exato listado. Se houver várias opções e o catálogo não informar preços, prefira a variante de menor esforço, sem afirmar que ela é comprovadamente a mais barata.
-* **Como pedir:** formule uma tarefa delimitada e peça conclusões concisas com evidências e incertezas. Antigravity aceita referências a arquivos com `@caminho`; use-as em vez de copiar arquivos extensos para o prompt.
+* **Como pedir:** formule uma tarefa delimitada e peça conclusões concisas com evidências e incertezas. Antigravity aceita referências absolutas a arquivos no formato `@/caminho/absoluto/arquivo`; use-as em vez de copiar arquivos extensos para o prompt.
 * **Duração e permissões:** não solicite modo que ignore aprovações; use sandbox quando apropriado.
 
 ---
