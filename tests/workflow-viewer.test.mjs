@@ -443,11 +443,11 @@ test('painel de detalhes lê artefatos e snapshots aprovados sem oferecer ediç�
   await copyPrompt.listeners.click();
   const businessEpic = WORKFLOW_STEPS.find(({ id }) => id === 'business-epic');
   assert.equal(copiedPrompt, [
+    businessEpic.promptCommand,
+    '',
     'Contexto:',
     '- Iniciativa: run',
     '- Tema: Tema',
-    '',
-    businessEpic.promptCommand,
     '',
     businessEpic.instructions,
     '',

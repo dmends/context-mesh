@@ -539,11 +539,11 @@ async function copyRecommendedPrompt(definition, node) {
   try {
     const initiativeName = currentStateObj.runId;
     const prompt = [
+      definition.promptCommand,
+      '',
       'Contexto:',
       `- Iniciativa: ${initiativeName}`,
       `- Tema: ${node.tema}`,
-      '',
-      definition.promptCommand,
       '',
       definition.instructions,
       '',
