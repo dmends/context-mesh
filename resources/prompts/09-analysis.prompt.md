@@ -17,7 +17,7 @@ Não altere instruções globais do projeto, configurações pessoais ou MCP; n�
 - **Destino:** `workspace/.analysis/<categoria>/<dominio>/`, usando `legado`, `refatorado` ou `dominios` conforme o conteúdo. Análises independentes de implementação ficam em `dominios`; não misture legado e refatorado.
 - **Template instalado:** `.copilot/plugins/smith/templates/008-analysis.md`.
 
-**Economia de Contexto e Subagentes:** O rastreamento de fluxos ponta a ponta envolve múltiplos arquivos. Utilize subagentes nativos para seguir o fluxo no código (handlers, serviços, repositórios), trazendo para a conversa principal apenas o mapeamento resumido das etapas e cenários.
+**Economia de Contexto e Subagentes:** Divida o rastreamento ponta a ponta por handlers, serviços ou repositórios e delegue via MCP aos CLIs locais Claude Code/Antigravity; traga somente o mapa resumido e evidências para a conversa principal. Use acesso local ou referências a arquivos, sem copiar código extenso. Consulte a lista de modelos e escolha a faixa de menor custo antes de cada chamada. Nunca inclua credenciais ou segredos.
 
 Leia o template instalado e rastreie o fluxo a partir do ponto de entrada, incluindo handlers, serviços, repositórios e integrações acionadas. Documente validações na ordem observada, regras de negócio, persistência e cenários de sucesso e erro. Use somente fatos comprováveis no código e registre limites da análise; não infira comportamento de fontes externas.
 

@@ -19,7 +19,7 @@ Não altere instruções globais do projeto, configurações pessoais ou MCP; n�
 - **Saída registrada:** `decision-record`.
 - **Template instalado:** `.copilot/plugins/smith/templates/003-decision-record.md`.
 
-**Economia de Contexto e Subagentes:** Registre apenas decisões e escolhas efetivamente adotadas pelo time. Use subagentes para consultar as propostas e discussões upstream, trazendo somente a definição final aprovada para a conversa.
+**Economia de Contexto e Subagentes:** Registre apenas decisões e escolhas efetivamente adotadas. Delegue a consulta de propostas upstream via MCP aos CLIs locais Claude Code/Antigravity e traga somente as definições aprovadas, com referências. Antes de cada chamada, consulte a lista de modelos e use a faixa de menor custo. Nunca inclua credenciais ou segredos.
 
 Reutilize o `run-id` da iniciativa, o mesmo `tema` do subnó e a lista estável de arquivos-fonte, sem incluir artefatos gerados nos argumentos `--input`. Os caminhos são relativos à raiz do projeto. Antes de redigir, execute:
 

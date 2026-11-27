@@ -26,8 +26,11 @@ Smith estrutura o trabalho de desenvolvimento em fases sequenciais rastreadas pe
 - **Sempre responder em Português (pt-br).**
 
 ## Regras de Execução e Economia de Contexto
-- Sempre use subagentes nativos do próprio ambiente/IDE para leitura de arquivos longos, materiais nas pastas das etapas e exploração de código, evitando poluir a janela de contexto principal com conteúdo bruto.
-- Agentes externos via MCP (`Claude` e `Antigravity`) devem ser usados exclusivamente conforme os critérios definidos na seção `Orquestração Multi-Agente via MCP`.
+- Não concentre na conversa principal leituras extensas, buscas amplas ou análises que possam ser divididas. Decomponha o trabalho em tarefas independentes e delegue-as; peça aos agentes apenas conclusões concisas, evidências e referências, e sintetize/valide os resultados na conversa principal.
+- Os MCPs Claude e Antigravity deste ambiente são interfaces para CLIs locais dos agentes, não um motivo para evitar delegação de código ou arquivos locais. Claude pode explorar o filesystem; Antigravity pode receber referências de arquivos com `@caminho`. Não copie arquivos longos para o contexto principal ou para o prompt se o agente puder lê-los diretamente.
+- Antes de cada chamada, consulte a lista de modelos do agente e escolha a faixa de menor custo disponível; use o ID exato listado e não fixe IDs nas instruções, pois o catálogo muda. Quando o catálogo não informar preço entre modelos da mesma faixa, prefira a variante de menor esforço sem presumir o custo exato.
+- Use Claude e Antigravity para tarefas distintas e paralelizáveis quando isso reduzir o trabalho/contexto principal; evite duplicar a mesma análise. Não inclua credenciais, tokens ou segredos nos prompts.
+- Se a ferramenta de delegação necessária não estiver disponível, use subagentes nativos quando existirem; caso contrário, prossiga diretamente e informe a limitação somente se afetar o resultado.
 
 ## Política de Documentação
 - **NÃO criar arquivos .md de nenhum tipo a menos que explicitamente solicitado pelo usuário.**
@@ -36,17 +39,17 @@ Smith estrutura o trabalho de desenvolvimento em fases sequenciais rastreadas pe
 ### Onde registrar cada conteúdo
 Classifique pelo tipo de conhecimento produzido, não apenas pela origem do material:
 
-| Conteúdo produzido     | Critério                                                                                                                                                                            | Destino                                                                                                                                                                               |
-|------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Knowledge As-Is        | Análise baseada exclusivamente no código, descrevendo o comportamento atual sem misturar insumos externos ou decisões propostas.                                                    | `workspace/.discovery/<iniciativa>/results/as-is-knowledge/`                                                                                                                                    |
-| Analysis               | Análise reutilizável de fluxo ou funcionalidade observada no código.                                                                                                               | `workspace/.analysis/<categoria>/<dominio>/`                                                                                                                                                    |
-| Épico de negócio       | Épico inicial para validação, produzido a partir das fontes de negócio.                                                                                                               | `workspace/.discovery/<iniciativa>/results/business-epic/`                                                                                                                                      |
-| Discovery consolidado  | Síntese do épico, knowledge, contexto, dependências e riscos.                                                                                                                          | `workspace/.discovery/<iniciativa>/results/discovery-consolidation/`                                                                                                                            |
-| Especificação técnica  | Solução To-Be e ARD de entrada do arquiteto.                                                                                                                                           | `workspace/.discovery/<iniciativa>/results/tech-solution-specification/`                                                                                                                        |
-| Decisão                | Escolha ou definição adotada, em vez de uma descrição do comportamento atual ou de um achado da investigação.                                                                       | `workspace/.discovery/<iniciativa>/results/decision-record/`                                                                                                                                   |
-| Gate de validação      | Aprovação explícita do pacote upstream.                                                                                                                                                 | `workspace/.discovery/<iniciativa>/results/validation-gate/`                                                                                                                                    |
-| Quebra de histórias    | Histórias, tasks e plano de execução.                                                                                                                                                   | `workspace/.discovery/<iniciativa>/results/story-task-breakdown/`                                                                                                                               |
-| Refinamento técnico    | Critérios de aceite e detalhamento técnico das histórias.                                                                                                                               | `workspace/.discovery/<iniciativa>/results/technical-refinement/`                                                                                                                              |
+| Conteúdo produzido    | Critério                                                                                                                         | Destino                                                                  |
+|-----------------------|----------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------|
+| Knowledge As-Is       | Análise baseada exclusivamente no código, descrevendo o comportamento atual sem misturar insumos externos ou decisões propostas. | `workspace/.discovery/<iniciativa>/results/as-is-knowledge/`             |
+| Analysis              | Análise reutilizável de fluxo ou funcionalidade observada no código.                                                             | `workspace/.analysis/<categoria>/<dominio>/`                             |
+| Épico de negócio      | Épico inicial para validação, produzido a partir das fontes de negócio.                                                          | `workspace/.discovery/<iniciativa>/results/business-epic/`               |
+| Discovery consolidado | Síntese do épico, knowledge, contexto, dependências e riscos.                                                                    | `workspace/.discovery/<iniciativa>/results/discovery-consolidation/`     |
+| Especificação técnica | Solução To-Be e ARD de entrada do arquiteto.                                                                                     | `workspace/.discovery/<iniciativa>/results/tech-solution-specification/` |
+| Decisão               | Escolha ou definição adotada, em vez de uma descrição do comportamento atual ou de um achado da investigação.                    | `workspace/.discovery/<iniciativa>/results/decision-record/`             |
+| Gate de validação     | Aprovação explícita do pacote upstream.                                                                                          | `workspace/.discovery/<iniciativa>/results/validation-gate/`             |
+| Quebra de histórias   | Histórias, tasks e plano de execução.                                                                                            | `workspace/.discovery/<iniciativa>/results/story-task-breakdown/`        |
+| Refinamento técnico   | Critérios de aceite e detalhamento técnico das histórias.                                                                        | `workspace/.discovery/<iniciativa>/results/technical-refinement/`        |
 
 O comando `cli.mjs init` cria essas oito pastas em `workspace/.discovery/<iniciativa>/results/` e as pastas de fontes `workspace/.discovery/<iniciativa>/input/business-stories/` e `workspace/.discovery/<iniciativa>/input/transcripts/`. Fontes originais ficam em `input/`; artefatos gerados ficam em `results/`.
 
@@ -94,17 +97,17 @@ Organize o conteúdo de cada uma das três categorias acima por domínio ou assu
 ## Templates de Documentação
 Use os modelos em `plugin/templates/` ao criar documentos desses tipos:
 
-| Template                         | Usar para                                                                                               | Destino do documento preenchido                                                                                            |
-|----------------------------------|---------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------|
-| `001-knowledge-as-is.md`         | Registrar comportamento As-Is verificado exclusivamente no código.                                      | `workspace/.discovery/<iniciativa>/results/as-is-knowledge/`                                                                        |
-| `002-discovery-result.md`        | Consolidar uma investigação com knowledge e, quando pertinente, código.                                  | `workspace/.discovery/<iniciativa>/results/discovery-consolidation/`                                                                |
-| `003-decision-record.md`         | Registrar uma escolha ou definição efetivamente adotada.                                                | `workspace/.discovery/<iniciativa>/results/decision-record/`                                                                        |
-| `004-business-epic.md`           | Consolidar agendas em um épico de negócio tratado como versão inicial para validação e evolução.        | `workspace/.discovery/<iniciativa>/results/business-epic/`                                                                          |
-| `000-knowledge-api.md`           | Documentar o contrato As-Is de entrada de uma API, comprovado exclusivamente pelo código.               | `workspace/.discovery/<iniciativa>/results/as-is-knowledge/`                                                                      |
-| `005-technical-specification.md` | Especificação técnica To-Be.                                                                            | `workspace/.discovery/<iniciativa>/results/tech-solution-specification/`                                                            |
-| `006-story-task-breakdown.md`    | Quebra de histórias/tasks.                                                                              | `workspace/.discovery/<iniciativa>/results/story-task-breakdown/`                                                                   |
-| `007-execution-plan.md`          | Plano de execução.                                                                                      | `workspace/.discovery/<iniciativa>/results/story-task-breakdown/`                                                                   |
-| `008-analysis.md`                | Análise reutilizável de fluxo ou funcionalidade observada no código.                                     | `workspace/.analysis/<categoria>/<dominio>/`                                                                                         |
+| Template                         | Usar para                                                                                        | Destino do documento preenchido                                          |
+|----------------------------------|--------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------|
+| `001-knowledge-as-is.md`         | Registrar comportamento As-Is verificado exclusivamente no código.                               | `workspace/.discovery/<iniciativa>/results/as-is-knowledge/`             |
+| `002-discovery-result.md`        | Consolidar uma investigação com knowledge e, quando pertinente, código.                          | `workspace/.discovery/<iniciativa>/results/discovery-consolidation/`     |
+| `003-decision-record.md`         | Registrar uma escolha ou definição efetivamente adotada.                                         | `workspace/.discovery/<iniciativa>/results/decision-record/`             |
+| `004-business-epic.md`           | Consolidar agendas em um épico de negócio tratado como versão inicial para validação e evolução. | `workspace/.discovery/<iniciativa>/results/business-epic/`               |
+| `000-knowledge-api.md`           | Documentar o contrato As-Is de entrada de uma API, comprovado exclusivamente pelo código.        | `workspace/.discovery/<iniciativa>/results/as-is-knowledge/`             |
+| `005-technical-specification.md` | Especificação técnica To-Be.                                                                     | `workspace/.discovery/<iniciativa>/results/tech-solution-specification/` |
+| `006-story-task-breakdown.md`    | Quebra de histórias/tasks.                                                                       | `workspace/.discovery/<iniciativa>/results/story-task-breakdown/`        |
+| `007-execution-plan.md`          | Plano de execução.                                                                               | `workspace/.discovery/<iniciativa>/results/story-task-breakdown/`        |
+| `008-analysis.md`                | Análise reutilizável de fluxo ou funcionalidade observada no código.                             | `workspace/.analysis/<categoria>/<dominio>/`                             |
 
 Os arquivos em `plugin/templates/` são modelos reutilizáveis, não resultados de discovery. Ao preencher um modelo, cite as fontes consultadas em uma seção agregada no final: por exemplo, agendas por data e participantes/áreas, ou código por sistema e nome dos módulos. Não exija paths, URLs, commits, símbolos ou IDs de fonte, nem vincule cada afirmação a uma referência individual. Registre incertezas, divergências e limitações de forma ampla no final; não classifique cada item individualmente, a menos que seja necessário para destacar uma pendência relevante. O template de contrato de entrada descreve somente o que está implementado no código; não presuma que uma especificação externa representa o comportamento atual. O épico consolidado de agendas é uma versão inicial para validação e evolução, não um rascunho nem uma decisão aprovada. Só crie um documento preenchido quando o usuário solicitar o registro.
 
@@ -121,29 +124,23 @@ workspace/src/
 Consulte `sources list` para obter fontes, papéis e escopos. As etapas recebem somente fontes explicitamente cadastradas e autorizadas para o seu papel; nunca amplie `scope` nem varra repositórios não selecionados. Cadastre ou atualize fontes somente após indicação e confirmação do usuário, usando `sources add`/`sources update`; não altere `.smith/runs/` manualmente. O schema persistido aceito é exclusivamente a versão 1; estados incompatíveis falham sem migração ou escrita.
 
 # Orquestração Multi-Agente via MCP
-Economize cota e evite trabalho redundante. Use o MCP `mcp-agents` somente quando a tarefa se beneficiar claramente de outra perspectiva ou de uma análise especializada; tarefas simples devem ser resolvidas diretamente.
+Use o MCP `mcp-agents` como interface para os CLIs locais Claude Code e Antigravity. Delegue buscas, leituras e análises que possam ser separadas em tarefas delimitadas, inclusive no código e nos arquivos locais do projeto; mantenha na conversa principal apenas sínteses, decisões e validações. Não inclua credenciais, tokens ou segredos nos prompts. Evite chamadas redundantes e escolha sempre a faixa de menor custo listada para cada agente.
 
 ## 1. Regras de roteamento
 
-### IA Nativamente
-* **Use para:** tarefas pontuais, leitura básica, alterações localizadas, implementação e execução/verificação de testes.
-* **Regra:** não chame um agente externo se puder concluir a tarefa com segurança e confiança sem ele.
-
-### Claude Code (`mcp-agents-Ask-Claude`) — arquitetura e análise aprofundada
-* **Use para:** planejar mudanças que envolvam vários arquivos, analisar fluxos de negócio difíceis ou obter uma revisão independente de decisões importantes.
-* **Pré-requisito:** antes de cada chamada a `mcp-agents-Ask-Claude`, chame `mcp-agents-List-Claude-Models` e escolha um modelo adequado.
-* **Como pedir:** descreva a tarefa, o objetivo e as restrições relevantes. Não leia arquivos previamente só para copiar seu conteúdo no prompt; o Claude Code tem acesso ao sistema de arquivos e deve explorar o projeto por conta própria.
-* **Escopo:** peça análise ou recomendações por padrão. O Copilot continua responsável por implementar e validar. Só peça ao Claude para editar ou executar tarefas quando o usuário solicitar explicitamente.
+### Claude Code (`mcp-agents-Ask-Claude`)
+* **Use para:** buscas locais, leitura de arquivos, rastreamento de fluxos e análises independentes que possam ser resumidas para a conversa principal.
+* **Modelo:** antes de cada chamada, use `mcp-agents-List-Claude-Models` e escolha a faixa de menor custo indicada pelo catálogo (atualmente `FAST`); passe o ID exato listado. Se houver várias opções e o catálogo não informar preços, prefira a variante de menor esforço, sem afirmar que ela é comprovadamente a mais barata.
+* **Como pedir:** Claude Code tem acesso ao filesystem local; informe o objetivo, os caminhos/áreas relevantes, os limites de leitura e o formato conciso do resultado. Não copie o conteúdo dos arquivos no prompt se Claude puder lê-los diretamente.
+* **Escopo:** peça análise ou recomendações; implementação e validação continuam com o agente principal, salvo solicitação explícita do usuário.
 * **Permissões:** não solicite modos que ignorem as verificações de segurança ou aprovações do Claude Code.
-* **Duração:** chamadas podem levar vários minutos. Quando a interface permitir, execute `Ask-Claude` como tarefa em segundo plano ou delegue a chamada a um subagente, sem bloquear a conversa principal.
 
-### Antigravity (`mcp-agents-Ask-Antigravity`) — execução de modelos Gemini e outros
+### Antigravity (`mcp-agents-Ask-Antigravity`)
 * **O que é:** a ferramenta chama o CLI Antigravity (`agy`), que pode executar modelos de diferentes famílias. Gemini é uma família de modelos disponível no Antigravity, não o nome da ferramenta de delegação.
-* **Use para:** sintetizar documentação ou logs extensos, analisar grande volume de material ou obter uma segunda opinião quando ela puder mudar uma decisão.
-* **Pré-requisito:** antes de cada chamada a `mcp-agents-Ask-Antigravity`, chame `mcp-agents-List-Antigravity-Models` e escolha um modelo adequado.
-* **Como pedir:** formule uma pergunta específica e peça uma resposta objetiva, com riscos, evidências e incertezas separados.
-* **Contexto:** inclua somente o material necessário. Não envie conteúdo extenso se o agente puder acessar os arquivos relevantes diretamente.
-* **Duração e permissões:** chamadas podem levar vários minutos. Não solicite modo que ignore aprovações; use sandbox quando apropriado.
+* **Use para:** buscas, leituras e análises independentes em arquivos locais, especialmente quando dividir a investigação reduzir o contexto da conversa principal.
+* **Modelo:** antes de cada chamada, use `mcp-agents-List-Antigravity-Models` e escolha a faixa de menor custo indicada pelo catálogo (atualmente `FAST`); passe o ID exato listado. Se houver várias opções e o catálogo não informar preços, prefira a variante de menor esforço, sem afirmar que ela é comprovadamente a mais barata.
+* **Como pedir:** formule uma tarefa delimitada e peça conclusões concisas com evidências e incertezas. Antigravity aceita referências a arquivos com `@caminho`; use-as em vez de copiar arquivos extensos para o prompt.
+* **Duração e permissões:** não solicite modo que ignore aprovações; use sandbox quando apropriado.
 
 ---
 
@@ -158,8 +155,8 @@ Economize cota e evite trabalho redundante. Use o MCP `mcp-agents` somente quand
 
 ## 3. Fluxo para tarefas complexas
 
-1. **Decida se delegar agrega valor.** Não delegue automaticamente só porque a tarefa é grande; escolha o agente conforme a seção de roteamento.
-2. **Planeje quando necessário.** Para mudanças arquiteturais ou de vários arquivos, consulte Claude antes de implementar. Use Antigravity com um modelo adequado (por exemplo, Gemini) para material extenso ou uma segunda opinião realmente útil; não chame ambos por padrão.
+1. **Decomponha o trabalho.** Para buscas, leituras ou análises extensas e divisíveis, defina tarefas independentes com escopo e resultado claros; não despeje o material bruto na conversa principal.
+2. **Escolha o agente e o modelo econômico.** Use os CLIs via MCP para tarefas locais delegáveis; consulte a lista de modelos antes de cada chamada e selecione a faixa de menor custo. Acione Claude e Antigravity em paralelo somente para tarefas distintas que possam avançar independentemente; não replique a mesma tarefa nos dois. Nunca inclua credenciais ou segredos nos prompts.
 3. **Implemente.** O Copilot aplica as mudanças no workspace, salvo solicitação explícita do usuário para delegar a implementação.
 4. **Verifique.** Execute os testes e verificações pertinentes no ambiente. Trate as respostas dos agentes como recomendações: confira-as no código e não declare testes executados se não os executou.
 5. **Comunique o resultado.** Resuma decisões, mudanças e verificações; sinalize claramente limitações ou pontos que não puderam ser confirmados.

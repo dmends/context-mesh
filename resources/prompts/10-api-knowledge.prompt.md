@@ -19,7 +19,7 @@ Não altere instruções globais do projeto, configurações pessoais ou MCP; n�
 - **Saída registrada:** `knowledge`.
 - **Template instalado:** `.copilot/plugins/smith/templates/000-knowledge-api.md`.
 
-**Economia de Contexto e Subagentes:** Delegue a varredura e leitura de rotas, esquemas DTOs e arquivos de validação a subagentes nativos de exploração, preservando o contexto principal da conversa.
+**Economia de Contexto e Subagentes:** Divida a varredura de rotas, DTOs e validações em tarefas por endpoint ou módulo e delegue via MCP aos CLIs locais Claude Code/Antigravity, trazendo apenas contratos comprovados e referências. Use acesso local ou referências a arquivos em vez de copiar código extenso. Consulte a lista de modelos e escolha a faixa de menor custo antes de cada chamada. Nunca inclua credenciais ou segredos.
 
 Use `run-id` como ID estável da iniciativa e `tema` como nome do subnó atual. Vários temas compartilham o mesmo `run-id`; mantenha o mesmo tema e a mesma lista de arquivos-fonte em todos os comandos deste subnó. Os caminhos `--input` são relativos à raiz do projeto e não devem incluir artefatos gerados. Antes de redigir, execute:
 

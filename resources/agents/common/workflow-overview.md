@@ -24,8 +24,11 @@ Analysis é um comando auxiliar para gerar documentação reutilizável em `work
 
 ## Regras de Execução e Economia de Contexto
 
-- **Subagentes nativos:** Sempre use subagentes nativos do próprio ambiente/IDE para leitura de arquivos longos, exploração profunda de código e análise de materiais nas pastas das etapas, evitando poluir a janela de contexto principal com conteúdo bruto.
-- **Delegação via MCP:** Agentes externos (`Claude Code` e `Antigravity`) devem ser acionados via MCP somente para tarefas especializadas (análises arquiteturais profundas ou sínteses de grandes volumes). Tarefas simples e implementação devem ser resolvidas nativamente.
+- **Delegação por padrão:** Divida buscas, leituras e análises extensas em tarefas independentes e delegue-as, trazendo para a conversa principal apenas conclusões concisas, evidências e referências.
+- **MCPs locais:** Claude e Antigravity via `mcp-agents` são interfaces para CLIs locais; use-os para delegar buscas, leituras e análises em código e arquivos do projeto, trazendo apenas conclusões e evidências para a conversa principal. Claude pode explorar o filesystem; Antigravity pode receber referências de arquivos com `@caminho`. Não copie arquivos longos para o prompt se o agente puder lê-los diretamente.
+- **Seleção econômica:** Antes de cada chamada, consulte a lista de modelos do agente e escolha a faixa de menor custo disponível, passando o ID exato. Se os preços não diferenciarem modelos na mesma faixa, prefira a variante de menor esforço sem presumir o custo exato.
+- **Delegação útil:** Divida investigações em tarefas independentes e distintas; use os dois agentes em paralelo quando isso poupar contexto/tempo, sem duplicar trabalho. Nunca inclua credenciais, tokens ou segredos nos prompts.
+- **Fallback:** Se o MCP não estiver disponível, use subagentes nativos quando existirem; sem capacidade de delegação, faça a análise diretamente.
 - **Economia de tokens:** Não faça narrações passo-a-passo ("Vou ler X, agora vou fazer Y"). Responda de forma direta e concisa apenas com o resultado solicitado.
 - **Fontes dinâmicas:** Consulte `sources list` e use somente caminhos locais cadastrados e selecionados pelo workflow. Não presuma pastas `workspace/src/legado` ou `workspace/src/refatorado`; respeite o papel e `scope` da fonte. Cadastre/atualize somente após indicação e confirmação do usuário, pelo CLI, nunca editando `.smith/runs/`.
 

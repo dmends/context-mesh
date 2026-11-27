@@ -18,7 +18,7 @@ Não altere instruções globais do projeto, configurações pessoais ou MCP; n�
 - **Saída registrada:** `discovery-consolidation`.
 - **Template instalado:** `.copilot/plugins/smith/templates/002-discovery-result.md`.
 
-**Economia de Contexto e Subagentes:** Utilize subagentes nativos para sintetizar previamente os materiais brutos das pastas de etapa e o knowledge existente antes da consolidação, evitando poluir a conversa principal.
+**Economia de Contexto e Subagentes:** Divida a síntese dos materiais brutos das etapas e do knowledge em tarefas independentes e delegue-as via MCP aos CLIs locais Claude Code/Antigravity. Mantenha a conversa principal apenas com conclusões e evidências; use acesso local ou referências a arquivos em vez de copiar materiais extensos. Antes de cada chamada, consulte o catálogo e escolha a faixa de menor custo. Nunca inclua credenciais ou segredos.
 
 Reutilize o `run-id` da iniciativa, o mesmo `tema` do subnó e a lista estável de arquivos-fonte, sem incluir artefatos gerados nos argumentos `--input`. Os caminhos são relativos à raiz do projeto. Antes de redigir, execute:
 

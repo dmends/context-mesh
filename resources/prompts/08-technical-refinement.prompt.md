@@ -18,7 +18,7 @@ Não altere instruções globais do projeto, configurações pessoais ou MCP; n�
 - **Saída registrada:** `technical-refinement`.
 - **Template instalado:** `.copilot/plugins/smith/templates/008-technical-refinement.md`.
 
-**Economia de Contexto e Subagentes:** O refinamento exige examinar o código de cada história detalhada. Delegue a inspeção das rotas, serviços e testes a subagentes nativos, evitando despejar arquivos inteiros de código na conversa principal.
+**Economia de Contexto e Subagentes:** Divida a inspeção de rotas, serviços e testes por história ou fluxo e delegue via MCP aos CLIs locais Claude Code/Antigravity. Não despeje arquivos inteiros na conversa principal; use acesso local ou referências a arquivos. Antes de cada chamada, consulte a lista de modelos e escolha a faixa de menor custo. Nunca inclua credenciais ou segredos.
 
 Use `run-id` como ID estável da iniciativa e `tema` como nome do subnó atual. Os caminhos `--input` são relativos à raiz do projeto e não devem incluir artefatos gerados. Antes de redigir, execute:
 
