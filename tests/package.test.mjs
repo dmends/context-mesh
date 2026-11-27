@@ -192,6 +192,23 @@ test('MCP delegation guidance requires absolute local paths', () => {
   assert.match(instructions, /@\/caminho\/absoluto/);
 });
 
+test('current guidance only references supported hidden workspace directories', () => {
+  const allowed = new Set(['.analysis', '.context', '.discovery']);
+  for (const file of [
+    'resources/instructions/smith.instructions.md',
+    'resources/agents/common/workflow-overview.md',
+    ...PROMPT_ASSETS.map(({ file }) => `resources/prompts/${file}`),
+    'install.md',
+    'docs/project-lifecycle-flow.md',
+    'src/installer/init.mjs',
+  ]) {
+    const guidance = readFileSync(path.join(REPOSITORY_ROOT, file), 'utf8');
+    for (const match of guidance.matchAll(/workspace\/(\.[a-z-]+)/g)) {
+      assert.ok(allowed.has(match[1]), `${file}: ${match[0]}`);
+    }
+  }
+});
+
 function createDirectory(t, prefix) {
   const directory = mkdtempSync(path.join(os.tmpdir(), prefix));
   t.after(() => rmSync(directory, { recursive: true, force: true }));

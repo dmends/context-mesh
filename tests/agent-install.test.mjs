@@ -40,7 +40,7 @@ test('installAgentPlugin installs standalone antigravity files', async (t) => {
   assert.equal(existsSync(path.join(targetRoot, 'workspace', '.context')), true);
   assert.equal(existsSync(path.join(targetRoot, 'workspace', '.discovery')), true);
   assert.equal(existsSync(path.join(targetRoot, 'workspace', '.analysis')), true);
-  assert.equal(existsSync(path.join(targetRoot, 'workspace', '.knowledge')), true);
+  assert.deepEqual(readdirSync(path.join(targetRoot, 'workspace')).sort(), ['.analysis', '.context', '.discovery', 'src']);
   assert.equal(existsSync(path.join(targetRoot, 'workspace', 'src')), true);
 
   const skills = readdirSync(path.join(targetRoot, 'skills'));

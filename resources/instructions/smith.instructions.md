@@ -82,11 +82,10 @@ workspace/
 │           ├── tech-solution-specification/
 │           ├── technical-refinement/
 │           └── validation-gate/
-├── .knowledge/
-    ├── dominios/                     # conhecimento independente da implementação
-    ├── legado/                       # conhecimento As-Is do sistema legado
-    └── refatorado/                   # conhecimento As-Is do sistema refatorado
 └── .analysis/                        # análises reutilizáveis de fluxos e funcionalidades
+    ├── dominios/                     # análise independente da implementação
+    ├── legado/                       # análise do sistema legado
+    └── refatorado/                   # análise do sistema refatorado
 ```
 
 Arquivos de artefatos de uma iniciativa devem usar nomes descritivos em kebab-case com número sequencial e slug do tema, como `001-regra-da-primeira-parcela.md`. Mantenha os temas juntos na pasta de resultados correspondente e não reutilize números dentro dela.
@@ -112,7 +111,7 @@ Use os modelos em `plugin/templates/` ao criar documentos desses tipos:
 Os arquivos em `plugin/templates/` são modelos reutilizáveis, não resultados de discovery. Ao preencher um modelo, cite as fontes consultadas em uma seção agregada no final: por exemplo, agendas por data e participantes/áreas, ou código por sistema e nome dos módulos. Não exija paths, URLs, commits, símbolos ou IDs de fonte, nem vincule cada afirmação a uma referência individual. Registre incertezas, divergências e limitações de forma ampla no final; não classifique cada item individualmente, a menos que seja necessário para destacar uma pendência relevante. O template de contrato de entrada descreve somente o que está implementado no código; não presuma que uma especificação externa representa o comportamento atual. O épico consolidado de agendas é uma versão inicial para validação e evolução, não um rascunho nem uma decisão aprovada. Só crie um documento preenchido quando o usuário solicitar o registro.
 
 ## Diretórios de Código-Fonte
-Os repositórios podem ficar em `workspace/src/` usando seus nomes naturais; não exija as pastas `legado/` ou `refatorado/`. Registre cada fonte local pelo CLI e selecione-a conforme o papel semântico:
+Os repositórios podem ficar em `workspace/src/` usando seus nomes naturais; não exija as pastas `legado/` ou `refatorado/`. Para etapas do workflow, registre cada fonte local pelo CLI e selecione-a conforme o papel semântico:
 
 ```text
 workspace/src/
@@ -121,7 +120,9 @@ workspace/src/
 └── <contratos-compartilhados>/
 ```
 
-Consulte `sources list` para obter fontes, papéis e escopos. As etapas recebem somente fontes explicitamente cadastradas e autorizadas para o seu papel; nunca amplie `scope` nem varra repositórios não selecionados. Cadastre ou atualize fontes somente após indicação e confirmação do usuário, usando `sources add`/`sources update`; não altere `.smith/runs/` manualmente. O schema persistido aceito é exclusivamente a versão 1; estados incompatíveis falham sem migração ou escrita.
+Para etapas do workflow, consulte `sources list` para obter fontes, papéis e escopos. As etapas recebem somente fontes explicitamente cadastradas e autorizadas para o seu papel; nunca amplie `scope` nem varra repositórios não selecionados. Cadastre ou atualize fontes somente após indicação e confirmação do usuário, usando `sources add`/`sources update`; não altere `.smith/runs/` manualmente. O schema persistido aceito é exclusivamente a versão 1; estados incompatíveis falham sem migração ou escrita.
+
+Para Analysis, consulte diretamente as fontes indicadas pelo usuário, sem `run-id` e sem cadastrar fontes; respeite o escopo indicado e as permissões de acesso. Leia diretamente o template instalado e grave o documento em `workspace/.analysis/<categoria>/<dominio>/`, sem usar o CLI do Smith.
 
 # Orquestração Multi-Agente via MCP
 Use o MCP `mcp-agents` como interface para os CLIs locais Claude Code e Antigravity. Delegue buscas, leituras e análises que possam ser separadas em tarefas delimitadas, inclusive no código e nos arquivos locais do projeto; mantenha na conversa principal apenas sínteses, decisões e validações. Não inclua credenciais, tokens ou segredos nos prompts. Evite chamadas redundantes e escolha sempre a faixa de menor custo listada para cada agente.

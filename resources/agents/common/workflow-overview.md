@@ -30,7 +30,8 @@ Analysis é um comando auxiliar para gerar documentação reutilizável em `work
 - **Delegação útil:** Divida investigações em tarefas independentes e distintas; use os dois agentes em paralelo quando isso poupar contexto/tempo, sem duplicar trabalho. Nunca inclua credenciais, tokens ou segredos nos prompts.
 - **Fallback:** Se o MCP não estiver disponível, use subagentes nativos quando existirem; sem capacidade de delegação, faça a análise diretamente.
 - **Economia de tokens:** Não faça narrações passo-a-passo ("Vou ler X, agora vou fazer Y"). Responda de forma direta e concisa apenas com o resultado solicitado.
-- **Fontes dinâmicas:** Consulte `sources list` e use somente caminhos locais cadastrados e selecionados pelo workflow. Não presuma pastas `workspace/src/legado` ou `workspace/src/refatorado`; respeite o papel e `scope` da fonte. Cadastre/atualize somente após indicação e confirmação do usuário, pelo CLI, nunca editando `.smith/runs/`.
+- **Fontes dinâmicas do workflow:** Consulte `sources list` e use somente caminhos locais cadastrados e selecionados pelo workflow. Não presuma pastas `workspace/src/legado` ou `workspace/src/refatorado`; respeite o papel e `scope` da fonte. Cadastre/atualize somente após indicação e confirmação do usuário, pelo CLI, nunca editando `.smith/runs/`.
+- **Analysis:** Consulte diretamente as fontes indicadas pelo usuário, sem `run-id` e sem cadastrar fontes; respeite o escopo indicado e as permissões de acesso. Leia diretamente o template instalado e grave o documento em `workspace/.analysis/<categoria>/<dominio>/`, sem usar o CLI do Smith.
 
 ## Política de Documentação
 

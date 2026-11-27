@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
@@ -315,12 +316,18 @@ test('upgrade replaces only known legacy prompts and retires only verified runti
 
 test('upgrade replaces prompts rendered by the previous plugin version', async (t) => {
   const options = await fixture(t);
-  const previousPrompts = JSON.parse(readFileSync(new URL('../resources/prompt-history.json', import.meta.url), 'utf8'))['1.2.0'].prompts;
+  const historyPath = join(options.sourceRoot, 'prompt-history.json');
+  const history = JSON.parse(readFileSync(historyPath, 'utf8'));
+  assert.equal(history['1.1.0'].prompts['smith-as-is-knowledge.prompt.md'], 'a79c821047ab335b8f2b673c6bb5ab138ad86b9bff5f5b4a1a4a71973e0c3212');
+  assert.equal(history['1.2.0'].prompts['smith-as-is-knowledge.prompt.md'], '3b36e442882343b30f6fdf5923f65a113fb294a17de3d325cfa4eade870fa371');
   const promptDirectory = join(options.targetRoot, '.github/prompts');
   mkdirSync(promptDirectory, { recursive: true });
-  for (const [destination, content] of Object.entries(previousPrompts)) {
+  for (const destination of Object.keys(history['1.2.0'].prompts)) {
+    const content = `Previous prompt: ${destination}\n`;
+    history['1.2.0'].prompts[destination] = createHash('sha256').update(content).digest('hex');
     writeFileSync(join(promptDirectory, destination), content);
   }
+  writeFileSync(historyPath, JSON.stringify(history));
 
   const preview = await initializePlugin({ ...options, dryRun: true });
   assert.ok(preview.prompts.every(({ status }) => status === 'update-planned'));

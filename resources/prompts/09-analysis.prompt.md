@@ -9,6 +9,8 @@ triggers:
 
 Este prompt gera documentação de fluxo reutilizável como conhecimento de entrada para o projeto. Não é uma etapa do workflow `project-lifecycle` e não registra artefatos em uma iniciativa.
 
+Para Analysis, consulte as fontes indicadas pelo usuário diretamente, sem `run-id` e sem cadastrar fontes. Não use o CLI do Smith para consultar fontes, ler o template ou gravar a análise; respeite o escopo indicado e as permissões de acesso.
+
 A seleção deste prompt é um pedido explícito para documentar o fluxo e gravar o resultado no projeto. Se a ferramenta não puder gravar arquivos ou o usuário negar a execução, informe o bloqueio e não entregue um substituto como resposta.
 
 Não altere instruções globais do projeto, configurações pessoais ou MCP; não instale componentes nem sincronize repositórios. Grave somente em `workspace/.analysis/`.
@@ -21,4 +23,4 @@ Não altere instruções globais do projeto, configurações pessoais ou MCP; n�
 
 Leia o template instalado e rastreie o fluxo a partir do ponto de entrada, incluindo handlers, serviços, repositórios e integrações acionadas. Documente validações na ordem observada, regras de negócio, persistência e cenários de sucesso e erro. Use somente fatos comprováveis no código e registre limites da análise; não infira comportamento de fontes externas.
 
-Escolha um nome descritivo em kebab-case para o arquivo e grave o documento preenchido no diretório da categoria e domínio correspondente em `workspace/.analysis/`. Não sobrescreva arquivos existentes. Este documento será material de entrada reutilizável para etapas futuras; não execute comandos `ready`, `publish` ou `complete` e não o grave em `.discovery/` nem em `.knowledge/`.
+Escolha um nome descritivo em kebab-case para o arquivo e grave o documento preenchido no diretório da categoria e domínio correspondente em `workspace/.analysis/`. Não sobrescreva arquivos existentes. Este documento será material de entrada reutilizável para etapas futuras; não execute comandos `ready`, `publish` ou `complete` e não o grave em `.discovery/`.

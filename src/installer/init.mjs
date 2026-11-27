@@ -4,7 +4,7 @@ import { cp, lstat, mkdir, readFile, readdir, realpath, rename, rm, rmdir } from
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { stdin, stdout } from 'node:process';
@@ -25,7 +25,6 @@ export const DEFAULT_WORKSPACE_DIRECTORIES = [
   'workspace/.context',
   'workspace/.discovery',
   'workspace/.analysis',
-  'workspace/.knowledge',
   'workspace/src',
 ];
 
@@ -310,7 +309,6 @@ async function readPromptHistory(sourceRoot) {
   for (const version of PREVIOUS_PLUGIN_VERSIONS) {
     const history = promptHistory[version];
     if (!history || typeof history !== 'object' || Array.isArray(history) ||
-      typeof history.instructions !== 'string' ||
       !history.prompts || typeof history.prompts !== 'object' || Array.isArray(history.prompts)) {
       throw new Error(`Prompt history for version ${version} is missing or invalid: ${historyPath}`);
     }
@@ -335,17 +333,22 @@ async function readJetBrainsPromptAssets(sourceRoot, command, promptHistory) {
       const stage = destination.slice('smith-'.length, -'.prompt.md'.length);
       const step = WORKFLOW_STEPS.find(({ id }) => id === stage);
       const { content, sourceContent } = await buildPromptContent(sourcePath, { stage, workflowCommand: command, step });
-      const previousContents = [];
+      const previousHashes = [];
       for (const version of PREVIOUS_PLUGIN_VERSIONS) {
         const previousPrompt = promptHistory[version].prompts[destination];
-        if (typeof previousPrompt !== 'string') {
+        if (typeof previousPrompt !== 'string' || !/^[a-f0-9]{64}$/.test(previousPrompt)) {
           throw new Error(`Prompt history entry is missing or invalid: ${version}/${destination}`);
         }
-        previousContents.push(Buffer.from(previousPrompt));
+        previousHashes.push(previousPrompt);
       }
-      return { destination, source, content, previousContents, sourceContent };
+      return { destination, source, content, previousContents: [], previousHashes, sourceContent };
     }),
   );
+}
+
+function matchesPreviousPrompt(prompt, content) {
+  return prompt?.previousContents?.some((previous) => previous.equals(content)) ||
+    prompt?.previousHashes?.includes(createHash('sha256').update(content).digest('hex'));
 }
 
 async function inspectJetBrainsPromptDestinations(targetRoot, promptAssets, forceOverwrite = false) {
@@ -365,7 +368,7 @@ async function inspectJetBrainsPromptDestinations(targetRoot, promptAssets, forc
         status = 'unchanged';
       } else if (matchesLegacy(`workflows/prompts/${prompt.source}`, current) ||
         Buffer.from(current.toString('utf8').replaceAll('\r\n', '\n')).equals(prompt.sourceContent) ||
-        prompt.previousContents?.some((content) => content.equals(current))) {
+        matchesPreviousPrompt(prompt, current)) {
         status = 'update-planned';
         previous = current;
       } else if (forceOverwrite) {
@@ -525,14 +528,13 @@ workspace/
         ├── tech-solution-specification/ ← ARD e especificação de solução
         ├── technical-refinement/        ← refinamento técnico
         └── validation-gate/             ← aprovação explícita
-├── .knowledge/
-│   ├── legado/
-│   │   └── <iniciativa>/            ← knowledge As-Is (legado)
-│   ├── refatorado/
-│   │   └── <iniciativa>/            ← knowledge As-Is (refatorado)
-│   └── dominios/
-│       └── <iniciativa>/            ← knowledge As-Is (domínios independentes)
-└── .analysis/                       ← análises reutilizáveis de fluxos e funcionalidades
+└── .analysis/
+    ├── legado/
+    │   └── <dominio>/               ← análise do sistema legado
+    ├── refatorado/
+    │   └── <dominio>/               ← análise do sistema refatorado
+    └── dominios/
+        └── <dominio>/               ← análise independente da implementação
 \`\`\`
 
 O estado de cada execução fica em \`.smith/runs/<run-id>.json\`. O visualizador em \`.smith/report/index.html\` mostra o progresso, dependências e artefatos de todas as iniciativas.
@@ -591,7 +593,7 @@ tema: Nome do Tema
 
 fontes:
 - workspace/.discovery/minha-iniciativa/results/business-epic
-- workspace/.knowledge
+- workspace/.analysis
 - workspace/src
 \`\`\`
 
@@ -697,7 +699,7 @@ ${cmd('core/cli.mjs')} publish \\
 EOF
 \`\`\`
 
-O \`publish\` grava cada artefato no \`outputDirectory\` do step informado por \`ready\`. Para \`as-is-knowledge\`, o destino é \`workspace/.discovery/<run-id>/results/as-is-knowledge/\`; \`workspace/.knowledge/\` é apenas fonte de entrada.
+O \`publish\` grava cada artefato no \`outputDirectory\` do step informado por \`ready\`. Para \`as-is-knowledge\`, o destino é \`workspace/.discovery/<run-id>/results/as-is-knowledge/\`; \`workspace/.analysis/\` é fonte de entrada.
 
 ### Registrar artefatos já existentes em disco
 
@@ -1538,7 +1540,7 @@ export async function initializePlugin({
     }
   }
   const automaticCleanup = client === 'jetbrains' && !hasSupplement && prompts.some(({ previous, path }) =>
-    previous && !promptAssets.find(({ destination }) => destination === basename(path))?.previousContents?.some((content) => content.equals(previous)),
+    previous && !matchesPreviousPrompt(promptAssets.find(({ destination }) => destination === basename(path)), previous),
   );
   let legacy = shared ? await inspectLegacy(legacyRoot, { owned: true }) : undefined;
   const requiresConfirmation = shared && !automaticCleanup && legacy.planned.length > 0;

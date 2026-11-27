@@ -16,7 +16,7 @@ Não altere instruções globais do projeto, configurações pessoais ou MCP; n�
 - **Pré-requisitos:** nenhum.
 - **Fontes:** fontes cadastradas com papel `legacy` ou `reference`, além do knowledge de entrada indicado pelo workflow. Não presuma uma estrutura fixa em `workspace/src/`.
 - **Saída registrada:** `knowledge`.
-- **Destino:** publique o artefato do step em `workspace/.discovery/<run-id>/results/as-is-knowledge/`. `workspace/.knowledge/` é apenas material de entrada; não publique o resultado nela nem classifique o artefato por categoria.
+- **Destino:** publique o artefato do step em `workspace/.discovery/<run-id>/results/as-is-knowledge/`. `workspace/.analysis/` é apenas fonte de entrada; não publique o resultado nela nem classifique o artefato por categoria.
 - **Templates instalados:** `.copilot/plugins/smith/templates/000-knowledge-api.md` para contrato de entrada de API; `.copilot/plugins/smith/templates/001-knowledge-as-is.md` para outros comportamentos As-Is.
 
 **Economia de Contexto e Subagentes:** A exploração de código consome contexto. Nunca leia pastas inteiras na conversa principal: divida a busca por fluxos ou módulos e delegue via MCP aos CLIs locais Claude Code/Antigravity, trazendo apenas comportamentos comprovados e referências. Ao fornecer caminhos de arquivos ou diretórios ao MCP, use somente caminhos absolutos do filesystem local; resolva qualquer caminho relativo antes da chamada. Para Antigravity, use referências `@/caminho/absoluto/arquivo` quando disponíveis, em vez de copiar arquivos. Consulte a lista de modelos e escolha a faixa de menor custo. Nunca inclua credenciais ou segredos.

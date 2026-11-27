@@ -192,7 +192,7 @@ cp -R dist/smith-plugin/agents/codex/. /caminho/para/projeto-alvo/
 
 ### Opção 2: Instalação via CLI (`init.mjs`)
 
-O instalador `init.mjs` automatiza a verificação de integridade, diagnóstico de conflitos, configuração compartilhada de runtime e MCP, além de inicializar as pastas padrão do workspace (`workspace/.context`, `workspace/.discovery`, `workspace/.knowledge`, `workspace/src`):
+O instalador `init.mjs` automatiza a verificação de integridade, diagnóstico de conflitos, configuração compartilhada de runtime e MCP, além de inicializar as pastas padrão do workspace (`workspace/.context`, `workspace/.discovery`, `workspace/.analysis`, `workspace/src`):
 
 #### ⚠️ REGRA FUNDAMENTAL PARA AGENTES DE IA (Quem é você?)
 

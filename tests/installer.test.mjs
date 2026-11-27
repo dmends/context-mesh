@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -54,8 +55,10 @@ function createPluginFixture(t) {
   const promptHistory = Object.fromEntries(['1.1.0', '1.2.0'].map((version) => [
     version,
     {
-      prompts: Object.fromEntries(JETBRAINS_PROMPTS.map(({ destination }) => [destination, `Previous ${version} prompt\n`])),
-      instructions: `Previous ${version} instructions\n`,
+      prompts: Object.fromEntries(JETBRAINS_PROMPTS.map(({ destination }) => [
+        destination,
+        createHash('sha256').update(`Previous ${version} prompt\n`).digest('hex'),
+      ])),
     },
   ]));
   writeFileSync(path.join(sourceRoot, 'prompt-history.json'), `${JSON.stringify(promptHistory)}\n`);
@@ -1165,6 +1168,7 @@ test("installation creates default workspace directories and dry-run does not", 
   assert.equal(result.status, "installed");
   assert.equal(existsSync(path.join(targetRoot, "workspace", ".context")), true);
   assert.equal(existsSync(path.join(targetRoot, "workspace", ".discovery")), true);
-  assert.equal(existsSync(path.join(targetRoot, "workspace", ".knowledge")), true);
+  assert.equal(existsSync(path.join(targetRoot, "workspace", ".analysis")), true);
+  assert.deepEqual(readdirSync(path.join(targetRoot, "workspace")).sort(), [".analysis", ".context", ".discovery", "src"]);
   assert.equal(existsSync(path.join(targetRoot, "workspace", "src")), true);
 });

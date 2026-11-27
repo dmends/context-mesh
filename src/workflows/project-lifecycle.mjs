@@ -27,7 +27,6 @@ export const WORKFLOW_STEPS = Object.freeze([
     recommendedSources: [
       'fontes cadastradas com papel legacy ou reference',
       'workspace/src/',
-      'workspace/.knowledge/',
       'workspace/.analysis/',
       'workspace/.discovery/<iniciativa>/results/as-is-knowledge/',
     ],
@@ -49,14 +48,12 @@ export const WORKFLOW_STEPS = Object.freeze([
     recommendedSources: [
       'workspace/.discovery/<iniciativa>/results/business-epic/',
       'workspace/.discovery/<iniciativa>/results/as-is-knowledge/',
-      'workspace/.knowledge/',
       'workspace/.analysis/',
       'workspace/.context/',
     ],
     inputs: [
       'workspace/.discovery/<iniciativa>/results/business-epic/',
       'workspace/.discovery/<iniciativa>/results/as-is-knowledge/',
-      'workspace/.knowledge/',
       'workspace/.analysis/',
       'workspace/.context/',
     ],

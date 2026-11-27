@@ -112,7 +112,6 @@ O catálogo de fontes é mantido pelo CLI (`sources add|update|remove|list`). N�
 - `workspace/.discovery/<iniciativa>/results/business-epic/` — épico inicial (Etapa 1)
 - `workspace/.discovery/<iniciativa>/results/as-is-knowledge/` — knowledge As-Is (Etapa 2)
 - `workspace/.analysis/` — análises reutilizáveis de fluxos e funcionalidades
-- `workspace/.knowledge/` — materiais de knowledge existentes, quando aplicável
 - `workspace/.context/` — contexto comum da iniciativa
 
 **Saída:** `discovery-consolidation`

@@ -14,7 +14,7 @@ A seleção deste prompt é um pedido explícito para criar e registrar o docume
 Não altere instruções globais do projeto, configurações pessoais ou MCP; não instale componentes nem sincronize repositórios. Gere arquivos somente dentro de `workspace/`.
 
 - **Pré-requisitos:** artefatos válidos de `business-epic` e `as-is-knowledge`.
-- **Fontes:** épico inicial em `workspace/.discovery/<iniciativa>/results/business-epic/`, knowledge As-Is em `workspace/.discovery/<iniciativa>/results/as-is-knowledge/` (e outros materiais em `workspace/.knowledge/`, quando houver) e contexto em `workspace/.context/`.
+- **Fontes:** épico inicial em `workspace/.discovery/<iniciativa>/results/business-epic/`, knowledge As-Is em `workspace/.discovery/<iniciativa>/results/as-is-knowledge/`, análises em `workspace/.analysis/` e contexto em `workspace/.context/`.
 - **Saída registrada:** `discovery-consolidation`.
 - **Template instalado:** `.copilot/plugins/smith/templates/000-discovery-consolidation.md`.
 

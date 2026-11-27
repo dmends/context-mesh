@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -106,7 +106,27 @@ describe('buildPromptContent', () => {
     assert.match(content, /workspace\/\.analysis\//);
     assert.match(content, /008-analysis\.md/);
     assert.doesNotMatch(content, /template --step|ready --workspace|publish --workspace|complete --workspace/);
-    assert.doesNotMatch(content, /workspace\/\.knowledge|results\/as-is-knowledge/);
+    assert.doesNotMatch(content, /results\/as-is-knowledge/);
+  });
+
+  it('allows Analysis to use explicitly indicated sources without a run or source registration', async () => {
+    const result = await buildPromptContent(join(REAL_PROMPT_DIR, '09-analysis.prompt.md'), {
+      stage: 'analysis',
+      workflowCommand: 'node plugin/core/cli.mjs',
+    });
+    const prompt = result.content.toString('utf8');
+    assert.match(prompt, /fontes indicadas pelo usuário diretamente/i);
+    assert.match(prompt, /sem `run-id` e sem cadastrar fontes/i);
+    assert.match(prompt, /workspace\/\.analysis\/<categoria>\/<dominio>\//);
+    assert.match(prompt, /Leia o template instalado/);
+
+    for (const resource of [
+      '../../resources/instructions/smith.instructions.md',
+      '../../resources/agents/common/workflow-overview.md',
+    ]) {
+      const guidance = readFileSync(new URL(resource, import.meta.url), 'utf8');
+      assert.match(guidance, /Analysis[^.\n]*sem `run-id` e sem cadastrar fontes/i, resource);
+    }
   });
 
   it('throws ENOENT for missing source file', async () => {

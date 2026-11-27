@@ -170,6 +170,17 @@ test('eight workflow stages declare input, output, and template contracts', asyn
   assert.equal(WORKFLOW_STEPS.find(({ id }) => id === 'as-is-knowledge').accumulative, true);
 });
 
+test('workflow refers only to supported hidden workspace directories', async () => {
+  const { WORKFLOW_STEPS } = await import(workflowUrl.href);
+  const allowed = new Set(['.analysis', '.context', '.discovery']);
+  for (const step of WORKFLOW_STEPS) {
+    for (const source of [...step.inputs, ...(step.recommendedSources ?? [])]) {
+      const match = source.match(/^workspace\/(\.[^/]+)/);
+      if (match) assert.ok(allowed.has(match[1]), `${step.id}: ${source}`);
+    }
+  }
+});
+
 test('a completed stage passes verified artifact references to its dependent stage', async (t) => {
   const engine = await loadEngine();
   const workspaceRoot = createWorkspace(t);
