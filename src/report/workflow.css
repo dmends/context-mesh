@@ -43,6 +43,13 @@
       /* Metric Cards */
       --metric-bg: linear-gradient(165deg, #313336 0%, #2b2d30 100%);
       --metric-label-color: #dfe1e5;
+      --success: #6aab73;
+      --success-border: rgba(16, 185, 129, 0.45);
+      --success-bg: rgba(16, 185, 129, 0.12);
+      --info: #79aef2;
+      --info-border: rgba(56, 189, 248, 0.48);
+      --info-bg: rgba(56, 189, 248, 0.12);
+
       --status-done-border: rgba(16, 185, 129, 0.45);
       --status-done-bg: rgba(16, 185, 129, 0.12);
       --status-done-text: #6aab73;
@@ -129,6 +136,13 @@
       /* Metric Cards */
       --metric-bg: #ffffff;
       --metric-label-color: #334155;
+      --success: #16a34a;
+      --success-border: #86efac;
+      --success-bg: #dcfce7;
+      --info: #2563eb;
+      --info-border: #93c5fd;
+      --info-bg: #dbeafe;
+
       --status-done-border: #86efac;
       --status-done-bg: #dcfce7;
       --status-done-text: #16a34a;
@@ -587,7 +601,7 @@
 
     .metrics-row {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 12px;
     }
 
@@ -769,6 +783,32 @@
       background: var(--badge-tema-bg);
       color: var(--badge-tema-text);
       border: 1px solid var(--badge-tema-border);
+    }
+
+    .theme-progress-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      background: var(--bg-surface-elevated);
+      color: var(--text-secondary);
+      border: 1px solid var(--border-subtle);
+      min-width: 44px;
+    }
+
+    .theme-progress-badge.badge-success {
+      color: var(--success);
+      border-color: var(--success-border);
+      background: var(--success-bg);
+    }
+
+    .theme-progress-badge.badge-progress {
+      color: var(--info);
+      border-color: var(--info-border);
+      background: var(--info-bg);
     }
 
     .theme-chevron {
@@ -1526,7 +1566,7 @@
     }
 
     /* ── Responsive Breakpoints ── */
-    @media (max-width: 960px) {
+    @media (max-width: 900px) {
       .intro {
         padding: 10px 20px;
       }

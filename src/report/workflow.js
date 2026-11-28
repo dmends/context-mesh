@@ -76,7 +76,7 @@ if (themeToggle && document.documentElement) {
   } catch (error) {
     showToast(notice, `Não foi possível recuperar a preferência de tema: ${error.message}`);
   }
-  applyTheme(savedTheme === 'dark' ? 'dark' : 'light');
+  applyTheme(savedTheme === 'light' ? 'light' : 'dark');
   themeToggle.addEventListener('click', () => {
     const currentTheme = document.documentElement.getAttribute('data-theme');
     applyTheme(currentTheme === 'light' ? 'dark' : 'light', true);
@@ -455,18 +455,28 @@ function render(state) {
 
   for (const [index, node] of state.nodes.entries()) {
     const theme = element('section', '', 'theme');
-    const shouldOpen = index === 0;
-    if (shouldOpen) theme.classList.add('open');
+    const shouldOpen = false;
     const header = element('div', '', 'theme-header');
     header.setAttribute('role', 'button');
     header.setAttribute('tabindex', '0');
-    header.setAttribute('aria-expanded', String(shouldOpen));
+    header.setAttribute('aria-expanded', 'false');
     const left = element('div', '', 'theme-header-left');
     left.append(
       element('h2', node.tema),
-      element('p', shouldOpen ? 'Selecione uma etapa para consultar seus artefatos' : 'Clique para expandir o fluxo'),
+      element('p', 'Clique para expandir o fluxo'),
     );
-    const badge = element('span', 'TEMA', 'theme-badge');
+    const totalSteps = node.steps ? node.steps.length : 8;
+    const completedSteps = (node.steps || []).filter((s) =>
+      s.status === 'completed' || (s.status === 'accumulating' && s.artifacts && s.artifacts.length > 0)
+    ).length;
+    const percentage = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
+
+    const badge = element('span', `${percentage}%`, 'theme-progress-badge');
+    if (percentage === 100) {
+      badge.classList.add('badge-success');
+    } else if (percentage > 0) {
+      badge.classList.add('badge-progress');
+    }
     const chevron = element('span', '', 'theme-chevron');
     chevron.append(svgIcon('M5 8l5 5 5-5'));
     const right = element('div', '', 'theme-header-right');

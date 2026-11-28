@@ -219,8 +219,12 @@ test('Schema 1 exibe fontes, temas, status e dependências do workflow', async (
   assert.equal(targetCard.children[2].className, 'source-badge source-kind-badge');
   assert.equal(targetCard.children.at(-1).className, 'source-badge target');
   const firstTheme = descendants(elements.content).find((item) => item.classList.contains('theme'));
-  assert.equal(firstTheme.classList.contains('open'), true);
-  assert.equal(descendants(firstTheme).find((item) => item.className === 'theme-header').attributes['aria-expanded'], 'true');
+  assert.equal(firstTheme.classList.contains('open'), false);
+  const firstHeader = descendants(firstTheme).find((item) => item.className === 'theme-header');
+  assert.equal(firstHeader.attributes['aria-expanded'], 'false');
+  const progressBadge = descendants(firstTheme).find((item) => item.classList.contains('theme-progress-badge'));
+  assert.ok(progressBadge);
+  assert.match(progressBadge.textContent, /^\d+%$/);
   assert.equal(descendants(elements.content).filter((item) => item.className.includes('metric-value')).length, 5);
   assert.ok(descendants(elements.content).some((item) =>
     item.className === 'metric-label' && item.textContent === 'Progresso'));
@@ -231,7 +235,8 @@ test('Schema 1 exibe fontes, temas, status e dependências do workflow', async (
 
 test('Alterna e persiste o tema claro/escuro', async () => {
   const defaultTheme = await viewer();
-  assert.equal(defaultTheme.documentElement.getAttribute('data-theme'), 'light');
+  assert.equal(defaultTheme.documentElement.getAttribute('data-theme'), 'dark');
+  assert.equal(defaultTheme['theme-toggle'].attributes['aria-label'], 'Mudar para tema claro');
 
   const values = new Map([['smith-theme', 'light']]);
   const storage = {
@@ -246,6 +251,11 @@ test('Alterna e persiste o tema claro/escuro', async () => {
   assert.equal(elements.documentElement.getAttribute('data-theme'), 'dark');
   assert.equal(values.get('smith-theme'), 'dark');
   assert.equal(elements['theme-toggle'].attributes['aria-label'], 'Mudar para tema claro');
+
+  elements['theme-toggle'].listeners.click();
+  assert.equal(elements.documentElement.getAttribute('data-theme'), 'light');
+  assert.equal(values.get('smith-theme'), 'light');
+  assert.equal(elements['theme-toggle'].attributes['aria-label'], 'Mudar para tema escuro');
 
   values.set('smith-theme', 'dark');
   const darkTheme = await viewer({ localStorage: storage });
@@ -502,4 +512,74 @@ test('viewer apresenta prompt de iniciação e continua sem permissão de escrit
   assert.match(css, /\.initiative-options\s*\{[^}]*position:\s*absolute/s);
   assert.match(html, /id="initiative-trigger"[^>]*aria-haspopup="listbox"/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+});
+
+test('Melhorias de Usabilidade e Layout do Painel (US-001 a US-004)', async () => {
+  const [html, js, css] = await Promise.all([
+    readFile(new URL('../src/report/index.html', import.meta.url), 'utf8'),
+    readFile(new URL('../src/report/workflow.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/report/workflow.css', import.meta.url), 'utf8'),
+  ]);
+
+  // US-001: Grid de Métricas em 5 Colunas e breakpoints
+  assert.match(css, /\.metrics-row\s*\{[^}]*grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\);/s);
+  assert.match(css, /@media\s*\(max-width:\s*900px\)\s*\{[\s\S]*?\.metrics-row\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/);
+  assert.match(css, /@media\s*\(max-width:\s*600px\)\s*\{[\s\S]*?\.metrics-row\s*\{[^}]*grid-template-columns:\s*1fr;/);
+
+  // US-002: data-theme="dark" padrão no HTML
+  assert.match(html, /<html\s+lang="pt-br"\s+data-theme="dark">/);
+
+  // US-003 & US-004: Renderização de temas, acordeões fechados e badges de progresso
+  const allCompletedOverrides = Object.fromEntries(
+    WORKFLOW_STEPS.map(({ id: type }) => [type, { status: StepStatus.COMPLETED }])
+  );
+  const halfCompletedOverrides = Object.fromEntries(
+    WORKFLOW_STEPS.slice(0, 4).map(({ id: type }) => [type, { status: StepStatus.COMPLETED }])
+  );
+  const nodes = [
+    makeNode('node-100', 'Tema Concluído', allCompletedOverrides),
+    makeNode('node-50', 'Tema Parcial', halfCompletedOverrides),
+    makeNode('node-0', 'Tema Vazio'),
+  ];
+
+  const elements = await viewer();
+  await selectFiles(elements, [runFile('test-run.json', state('test-init', nodes))]);
+
+  const renderedThemes = descendants(elements.content).filter((item) => item.classList.contains('theme'));
+  assert.equal(renderedThemes.length, 3);
+
+  // US-003: Todos os temas devem iniciar fechados (sem classe open, aria-expanded="false")
+  for (const themeEl of renderedThemes) {
+    assert.equal(themeEl.classList.contains('open'), false);
+    const header = descendants(themeEl).find((item) => item.className === 'theme-header');
+    assert.equal(header.attributes['aria-expanded'], 'false');
+    const subtitle = descendants(header).find((item) => item.tagName === 'P');
+    assert.equal(subtitle.textContent, 'Clique para expandir o fluxo');
+
+    // Ao clicar, alterna para open
+    header.listeners.click();
+    assert.equal(themeEl.classList.contains('open'), true);
+    assert.equal(header.attributes['aria-expanded'], 'true');
+    assert.equal(subtitle.textContent, 'Selecione uma etapa para consultar seus artefatos');
+
+    // Ao clicar novamente, fecha
+    header.listeners.click();
+    assert.equal(themeEl.classList.contains('open'), false);
+    assert.equal(header.attributes['aria-expanded'], 'false');
+    assert.equal(subtitle.textContent, 'Clique para expandir o fluxo');
+  }
+
+  // US-004: Progresso de 100%, 50% e 0%
+  const badge100 = descendants(renderedThemes[0]).find((item) => item.classList.contains('theme-progress-badge'));
+  assert.equal(badge100.textContent, '100%');
+  assert.equal(badge100.classList.contains('badge-success'), true);
+
+  const badge50 = descendants(renderedThemes[1]).find((item) => item.classList.contains('theme-progress-badge'));
+  assert.equal(badge50.textContent, '50%');
+  assert.equal(badge50.classList.contains('badge-progress'), true);
+
+  const badge0 = descendants(renderedThemes[2]).find((item) => item.classList.contains('theme-progress-badge'));
+  assert.equal(badge0.textContent, '0%');
+  assert.equal(badge0.classList.contains('badge-success'), false);
+  assert.equal(badge0.classList.contains('badge-progress'), false);
 });
