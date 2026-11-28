@@ -169,6 +169,7 @@ const EXPECTED_PACKAGE_FILES = [
   'plugin.json',
   'prompt-history.json',
   'report/index.html',
+  'report/vendor/mermaid.min.js',
   'report/workflow.css',
   'report/workflow.js',
   'utils/repository/sync/sync.mjs',

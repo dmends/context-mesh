@@ -67,6 +67,7 @@ function applyTheme(theme, persist = false) {
       showToast(notice, `Não foi possível salvar a preferência de tema: ${error.message}`);
     }
   }
+  rerenderMermaidDiagrams();
 }
 
 if (themeToggle && document.documentElement) {
@@ -587,7 +588,14 @@ function renderArtifact(name, artifact, sequence, loads) {
       const text = await file.text();
       if (sequence !== detailSequence) return;
       output.textContent = '';
-      output.append(artifact.path.toLowerCase().endsWith('.md') ? renderMarkdown(text) : element('pre', text));
+      if (artifact.path.toLowerCase().endsWith('.md')) {
+        const md = renderMarkdown(text);
+        output.append(md);
+        await renderMermaidDiagrams(md);
+        renderPlantUMLDiagrams(md);
+      } else {
+        output.append(element('pre', text));
+      }
     } catch (error) {
       if (sequence === detailSequence) {
         output.className = 'artifact-error';
@@ -692,15 +700,38 @@ function renderMarkdown(text) {
   while (index < lines.length) {
     const line = lines[index];
     if (!line.trim()) { index += 1; continue; }
-    const fence = /^\s*(`{3,}|~{3,})/.exec(line);
+    const fence = /^\s*(`{3,}|~{3,})\s*([a-zA-Z0-9_-]*)/.exec(line);
     if (fence) {
       index += 1;
       const code = [];
       while (index < lines.length && !lines[index].trim().startsWith(fence[1])) code.push(lines[index++]);
       if (index < lines.length) index += 1;
-      const pre = element('pre', '');
-      pre.append(element('code', code.join('\n')));
-      result.append(pre);
+
+      const lang = (fence[2] || '').toLowerCase().trim();
+      const rawCode = code.join('\n');
+      const isPlantUml = lang === 'plantuml' || lang === 'puml' || rawCode.trim().startsWith('@startuml');
+
+      if (lang === 'mermaid') {
+        const container = element('div', '', 'diagram-container mermaid-container');
+        const el = element('div', rawCode, 'mermaid');
+        el.id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        el.setAttribute('data-original-code', rawCode);
+        container.append(el);
+        result.append(container);
+      } else if (isPlantUml) {
+        const container = element('div', '', 'diagram-container plantuml-container');
+        const el = element('div', '', 'plantuml');
+        el.setAttribute('data-code', rawCode);
+        el.setAttribute('data-original-code', rawCode);
+        container.append(el);
+        result.append(container);
+      } else {
+        const pre = element('pre', '');
+        const codeEl = element('code', rawCode);
+        if (lang) codeEl.className = `language-${lang}`;
+        pre.append(codeEl);
+        result.append(pre);
+      }
       continue;
     }
     const heading = /^\s*(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
@@ -749,6 +780,7 @@ function renderMarkdown(text) {
     }
     renderInline(paragraph, parts.join('\n')); result.append(paragraph);
   }
+  renderPlantUMLDiagrams(result);
   return result;
 }
 
@@ -1007,4 +1039,446 @@ if (typeof showDirectoryPicker === 'function' && typeof indexedDB !== 'undefined
   }).catch((error) => { showToast(notice, `Não foi possível recuperar o último projeto: ${error.message}`); });
 } else {
   showToast(notice, 'Este navegador pode exigir que o projeto seja selecionado novamente ao abrir a página.');
+}
+
+
+/* ── Diagram Helpers (Mermaid & PlantUML) ── */
+
+function escapeHtml(text) {
+  if (typeof text !== 'string') return '';
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function findClosest(node, selector) {
+  if (!node) return null;
+  if (node.closest) return node.closest(selector);
+  const isClass = selector.startsWith('.');
+  const target = isClass ? selector.slice(1) : selector.toUpperCase();
+  let cur = node.parentElement;
+  while (cur) {
+    if (isClass && cur.classList && cur.classList.contains(target)) return cur;
+    if (!isClass && cur.tagName === target) return cur;
+    cur = cur.parentElement;
+  }
+  return null;
+}
+
+function encode6bit(b) {
+  if (b < 10) return String.fromCharCode(48 + b);
+  b -= 10;
+  if (b < 26) return String.fromCharCode(65 + b);
+  b -= 26;
+  if (b < 26) return String.fromCharCode(97 + b);
+  b -= 26;
+  if (b === 0) return '-';
+  if (b === 1) return '_';
+  return '?';
+}
+
+function append3bytes(b1, b2, b3) {
+  const c1 = b1 >> 2;
+  const c2 = ((b1 & 0x3) << 4) | (b2 >> 4);
+  const c3 = ((b2 & 0xF) << 2) | (b3 >> 6);
+  const c4 = b3 & 0x3F;
+  return encode6bit(c1 & 0x3F) + encode6bit(c2 & 0x3F) + encode6bit(c3 & 0x3F) + encode6bit(c4 & 0x3F);
+}
+
+function encode64(data) {
+  let r = '';
+  for (let i = 0; i < data.length; i += 3) {
+    if (i + 2 < data.length) {
+      r += append3bytes(data[i], data[i + 1], data[i + 2]);
+    } else if (i + 1 < data.length) {
+      r += append3bytes(data[i], data[i + 1], 0);
+    } else {
+      r += append3bytes(data[i], 0, 0);
+    }
+  }
+  return r;
+}
+
+function utf8Encode(str) {
+  if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(str);
+  if (typeof Buffer !== 'undefined') return Buffer.from(str, 'utf8');
+  const bytes = [];
+  for (let i = 0; i < str.length; i++) {
+    let c = str.charCodeAt(i);
+    if (c >= 0xd800 && c <= 0xdbff && i + 1 < str.length) {
+      const second = str.charCodeAt(i + 1);
+      if (second >= 0xdc00 && second <= 0xdfff) {
+        c = (c - 0xd800) * 0x400 + second - 0xdc00 + 0x10000;
+        i++;
+      }
+    }
+    if (c < 0x80) bytes.push(c);
+    else if (c < 0x800) bytes.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f));
+    else if (c < 0x10000) bytes.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
+    else bytes.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 0x3f), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
+  }
+  return new Uint8Array(bytes);
+}
+
+function encodePlantUML(text) {
+  const utf8 = utf8Encode(text);
+
+  // RFC 1951 uncompressed DEFLATE blocks (BTYPE=00)
+  const chunks = [];
+  let offset = 0;
+  while (offset < utf8.length) {
+    const chunkLen = Math.min(utf8.length - offset, 65535);
+    const isLast = (offset + chunkLen >= utf8.length);
+    const header = new Uint8Array(5);
+    header[0] = isLast ? 0x01 : 0x00;
+    header[1] = chunkLen & 0xff;
+    header[2] = (chunkLen >> 8) & 0xff;
+    const nlen = (~chunkLen) & 0xffff;
+    header[3] = nlen & 0xff;
+    header[4] = (nlen >> 8) & 0xff;
+    chunks.push(header);
+    chunks.push(utf8.subarray ? utf8.subarray(offset, offset + chunkLen) : utf8.slice(offset, offset + chunkLen));
+    offset += chunkLen;
+  }
+  if (chunks.length === 0) {
+    chunks.push(new Uint8Array([0x01, 0x00, 0x00, 0xff, 0xff]));
+  }
+  let totalLength = 0;
+  for (const c of chunks) totalLength += c.length;
+  const deflated = new Uint8Array(totalLength);
+  let pos = 0;
+  for (const c of chunks) {
+    deflated.set(c, pos);
+    pos += c.length;
+  }
+  return encode64(deflated);
+}
+
+function renderDiagramOfflineFallback(rawCode) {
+  const container = element('div', '', 'diagram-offline-fallback');
+  const notice = element('div', 'Visualização gráfica requer conexão externa para PlantUML', 'diagram-offline-notice');
+  const pre = element('pre', '');
+  const code = element('code', rawCode);
+  pre.append(code);
+  container.append(notice, pre);
+  return container;
+}
+
+function renderDiagramError(type, message, rawCode) {
+  const container = element('div', '', 'diagram-error');
+  const header = element('div', '', 'diagram-error-header');
+  header.append(element('strong', `⚠️ Erro na sintaxe do diagrama ${type}`));
+  const msg = element('p', message, 'diagram-error-msg');
+  const details = element('details', '');
+  const summary = element('summary', 'Exibir código original');
+  const pre = element('pre', '');
+  const code = element('code', rawCode);
+  pre.append(code);
+  details.append(summary, pre);
+  container.append(header, msg, details);
+  return container;
+}
+
+function addDiagramControls(container, rawCode) {
+  if (container.querySelector && container.querySelector('.diagram-actions')) return;
+  const actions = element('div', '', 'diagram-actions');
+  const copyBtn = element('button', 'Copiar', 'btn-diagram-action btn-copy-diagram');
+  copyBtn.type = 'button';
+  copyBtn.title = 'Copiar código do diagrama';
+  copyBtn.setAttribute('aria-label', 'Copiar código do diagrama');
+  copyBtn.addEventListener('click', async () => {
+    try {
+      if (navigator.clipboard) await navigator.clipboard.writeText(rawCode);
+      showToast(notice, 'Código do diagrama copiado.');
+    } catch (e) {
+      showToast(notice, `Não foi possível copiar: ${e.message}`);
+    }
+  });
+
+  const zoomBtn = element('button', 'Ampliar', 'btn-diagram-action btn-zoom-diagram');
+  zoomBtn.type = 'button';
+  zoomBtn.title = 'Ampliar diagrama';
+  zoomBtn.setAttribute('aria-label', 'Ampliar diagrama');
+  zoomBtn.addEventListener('click', () => openDiagramModal(container, rawCode));
+
+  actions.append(copyBtn, zoomBtn);
+  if (container.prepend) {
+    container.prepend(actions);
+  } else if (container.children && container.children.length > 0) {
+    container.insertBefore(actions, container.children[0]);
+  } else {
+    container.append(actions);
+  }
+}
+
+function openDiagramModal(container, rawCode) {
+  let currentZoom = 1;
+  const minZoom = 0.2;
+  const maxZoom = 10;
+
+  const diagramEl = container.querySelector ? (container.querySelector('.mermaid') || container.querySelector('.plantuml')) : null;
+  if (!diagramEl) return;
+
+  const modal = element('div', '', 'diagram-modal');
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-label', 'Ampliação de Diagrama');
+
+  const content = element('div', '', 'diagram-modal-content');
+  const header = element('div', '', 'diagram-modal-header');
+  header.append(element('h3', 'Diagrama'));
+
+  const controls = element('div', '', 'diagram-modal-controls');
+  const zoomOutBtn = element('button', '−', 'diagram-modal-btn');
+  zoomOutBtn.type = 'button';
+  zoomOutBtn.title = 'Diminuir zoom';
+  zoomOutBtn.setAttribute('aria-label', 'Diminuir zoom');
+
+  const zoomLevel = element('span', '100%', 'diagram-zoom-level');
+
+  const zoomInBtn = element('button', '+', 'diagram-modal-btn');
+  zoomInBtn.type = 'button';
+  zoomInBtn.title = 'Aumentar zoom';
+  zoomInBtn.setAttribute('aria-label', 'Aumentar zoom');
+
+  const resetBtn = element('button', 'Reset', 'diagram-modal-btn');
+  resetBtn.type = 'button';
+  resetBtn.title = 'Resetar zoom';
+  resetBtn.setAttribute('aria-label', 'Resetar zoom');
+
+  const fullscreenBtn = element('button', 'Tela Cheia', 'diagram-modal-btn');
+  fullscreenBtn.type = 'button';
+  fullscreenBtn.title = 'Alternar tela cheia';
+  fullscreenBtn.setAttribute('aria-label', 'Alternar tela cheia');
+
+  const copyModalBtn = element('button', 'Copiar', 'diagram-modal-btn');
+  copyModalBtn.type = 'button';
+  copyModalBtn.title = 'Copiar código';
+  copyModalBtn.setAttribute('aria-label', 'Copiar código');
+  copyModalBtn.addEventListener('click', async () => {
+    try {
+      if (navigator.clipboard) await navigator.clipboard.writeText(rawCode);
+      showToast(notice, 'Código do diagrama copiado.');
+    } catch (e) {
+      showToast(notice, `Não foi possível copiar: ${e.message}`);
+    }
+  });
+
+  const closeBtn = element('button', '✕', 'diagram-modal-btn');
+  closeBtn.type = 'button';
+  closeBtn.title = 'Fechar (ESC)';
+  closeBtn.setAttribute('aria-label', 'Fechar');
+
+  controls.append(zoomOutBtn, zoomLevel, zoomInBtn, resetBtn, fullscreenBtn, copyModalBtn, closeBtn);
+  header.append(controls);
+
+  const modalBody = element('div', '', 'diagram-modal-body');
+  const wrapper = element('div', '', 'diagram-modal-diagram-wrapper');
+
+  const svg = diagramEl.querySelector ? diagramEl.querySelector('svg') : null;
+  const img = diagramEl.querySelector ? diagramEl.querySelector('img') : null;
+  if (svg && svg.cloneNode) {
+    wrapper.append(svg.cloneNode(true));
+  } else if (img && img.cloneNode) {
+    wrapper.append(img.cloneNode(true));
+  } else {
+    wrapper.innerHTML = diagramEl.innerHTML || diagramEl.textContent;
+  }
+  modalBody.append(wrapper);
+
+  content.append(header, modalBody);
+  modal.append(content);
+
+  const previousOverflow = document.body ? document.body.style.overflow : '';
+  if (document.body) document.body.style.overflow = 'hidden';
+
+  const closeModal = () => {
+    document.removeEventListener('keydown', onKeyDown);
+    if (document.body) document.body.style.overflow = previousOverflow;
+    modal.remove();
+  };
+
+  const onKeyDown = (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeModal();
+    }
+  };
+  document.addEventListener('keydown', onKeyDown);
+  closeBtn.addEventListener('click', closeModal);
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeModal();
+  });
+
+  const updateZoom = (z) => {
+    currentZoom = Math.max(minZoom, Math.min(maxZoom, z));
+    wrapper.style.transform = `scale(${currentZoom})`;
+    zoomLevel.textContent = `${Math.round(currentZoom * 100)}%`;
+  };
+
+  zoomInBtn.addEventListener('click', () => updateZoom(currentZoom + (currentZoom < 2 ? 0.25 : 0.5)));
+  zoomOutBtn.addEventListener('click', () => updateZoom(currentZoom - (currentZoom <= 2 ? 0.25 : 0.5)));
+  resetBtn.addEventListener('click', () => {
+    updateZoom(1);
+    modalBody.scrollLeft = 0;
+    modalBody.scrollTop = 0;
+  });
+
+  fullscreenBtn.addEventListener('click', () => {
+    if (!document.fullscreenElement) {
+      if (modal.requestFullscreen) modal.requestFullscreen().catch(() => {});
+    } else {
+      if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+    }
+  });
+
+  let isDragging = false;
+  let startX = 0;
+  let startY = 0;
+  let scrollLeft = 0;
+  let scrollTop = 0;
+
+  modalBody.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    isDragging = true;
+    startX = e.pageX - modalBody.offsetLeft;
+    startY = e.pageY - modalBody.offsetTop;
+    scrollLeft = modalBody.scrollLeft;
+    scrollTop = modalBody.scrollTop;
+  });
+
+  modalBody.addEventListener('mouseleave', () => { isDragging = false; });
+  modalBody.addEventListener('mouseup', () => { isDragging = false; });
+  modalBody.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    e.preventDefault();
+    const x = e.pageX - modalBody.offsetLeft;
+    const y = e.pageY - modalBody.offsetTop;
+    modalBody.scrollLeft = scrollLeft - (x - startX);
+    modalBody.scrollTop = scrollTop - (y - startY);
+  });
+
+  const mountTarget = document.body || document.documentElement;
+  mountTarget.append(modal);
+}
+
+async function renderMermaidDiagrams(container) {
+  if (typeof mermaid === 'undefined' || !container) return;
+  const isDark = document.documentElement ? document.documentElement.getAttribute('data-theme') === 'dark' : false;
+  try {
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: isDark ? 'dark' : 'default',
+      securityLevel: 'loose',
+      flowchart: { htmlLabels: false },
+    });
+  } catch (e) {
+    // initialize failure handled
+  }
+
+  const elements = container.querySelectorAll ? container.querySelectorAll('.mermaid') : [];
+  for (const el of elements) {
+    const raw = el.getAttribute('data-original-code') || el.textContent;
+    if (!raw || !raw.trim()) continue;
+    const parentContainer = findClosest(el, '.diagram-container') || el.parentElement;
+    try {
+      if (mermaid.parse) {
+        const valid = await mermaid.parse(raw, { suppressErrors: true });
+        if (!valid) throw new Error('Sintaxe inválida no diagrama');
+      }
+      if (mermaid.render) {
+        const renderId = 'mermaid-svg-' + Math.random().toString(36).slice(2, 9) + '-' + Date.now();
+        const res = await mermaid.render(renderId, raw);
+        const svgContent = typeof res === 'string' ? res : (res && res.svg ? res.svg : '');
+        el.innerHTML = svgContent;
+        if (res && res.bindFunctions) {
+          try { res.bindFunctions(el); } catch (e) {}
+        }
+      } else if (mermaid.run) {
+        el.textContent = raw;
+        await mermaid.run({ nodes: [el] });
+      }
+      if (parentContainer) {
+        addDiagramControls(parentContainer, raw);
+      }
+    } catch (err) {
+      el.textContent = '';
+      el.append(renderDiagramError('Mermaid', err.message || String(err), raw));
+      if (parentContainer) {
+        addDiagramControls(parentContainer, raw);
+      }
+    }
+  }
+}
+
+async function rerenderMermaidDiagrams() {
+  if (typeof mermaid === 'undefined') return;
+  const isDark = document.documentElement ? document.documentElement.getAttribute('data-theme') === 'dark' : false;
+  try {
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: isDark ? 'dark' : 'default',
+      securityLevel: 'loose',
+      flowchart: { htmlLabels: false },
+    });
+  } catch (e) {
+    return;
+  }
+
+  const elements = document.querySelectorAll ? document.querySelectorAll('.mermaid-container .mermaid') : [];
+  for (const el of elements) {
+    const raw = el.getAttribute('data-original-code');
+    if (!raw) continue;
+    try {
+      if (mermaid.render) {
+        const renderId = 'mermaid-rerender-' + Math.random().toString(36).slice(2, 9) + '-' + Date.now();
+        const res = await mermaid.render(renderId, raw);
+        const svgContent = typeof res === 'string' ? res : (res && res.svg ? res.svg : '');
+        el.innerHTML = svgContent;
+        if (res && res.bindFunctions) {
+          try { res.bindFunctions(el); } catch (e) {}
+        }
+      } else if (mermaid.run) {
+        el.innerHTML = '';
+        el.textContent = raw;
+        el.removeAttribute('data-processed');
+        await mermaid.run({ nodes: [el] });
+      }
+    } catch (err) {
+      el.textContent = '';
+      el.append(renderDiagramError('Mermaid', err.message || String(err), raw));
+    }
+  }
+}
+
+function renderPlantUMLDiagrams(container) {
+  if (!container) return;
+  const elements = container.querySelectorAll ? container.querySelectorAll('.plantuml') : [];
+  for (const el of elements) {
+    const raw = el.getAttribute('data-code') || el.getAttribute('data-original-code') || el.textContent;
+    if (!raw || !raw.trim()) continue;
+    try {
+      const encoded = encodePlantUML(raw);
+      const parentContainer = findClosest(el, '.diagram-container') || el.parentElement;
+      const img = element('img', '', 'plantuml-svg-img');
+      img.setAttribute('src', `https://www.plantuml.com/plantuml/svg/${encoded}`);
+      img.setAttribute('alt', 'Diagrama PlantUML');
+      img.setAttribute('loading', 'lazy');
+      img.addEventListener('error', () => {
+        el.textContent = '';
+        el.append(renderDiagramOfflineFallback(raw));
+      });
+      el.textContent = '';
+      el.append(img);
+      if (parentContainer) {
+        addDiagramControls(parentContainer, raw);
+      }
+    } catch (err) {
+      el.textContent = '';
+      el.append(renderDiagramError('PlantUML', err.message || String(err), raw));
+    }
+  }
 }

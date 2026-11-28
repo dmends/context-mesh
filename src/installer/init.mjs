@@ -438,10 +438,17 @@ async function inspectViewer(target, source, destination, destinationExists, for
   const content = renderViewer(await readFile(templatePath, 'utf8'), initialProjectPrompt);
   const cssPath = join(target, '.smith', 'report', 'workflow.css');
   const jsPath = join(target, '.smith', 'report', 'workflow.js');
+  const mermaidPath = join(target, '.smith', 'report', 'vendor', 'mermaid.min.js');
   const [cssContent, jsContent] = await Promise.all([
     readFile(join(source, 'report', 'workflow.css')),
     readFile(join(source, 'report', 'workflow.js')),
   ]);
+  let mermaidContent = null;
+  try {
+    mermaidContent = await readFile(join(source, 'report', 'vendor', 'mermaid.min.js'));
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
   await assertNoSymlinkPath(target, segments);
 
   async function inspectStatic(assetPath, assetContent) {
@@ -457,34 +464,38 @@ async function inspectViewer(target, source, destination, destinationExists, for
     }
   }
 
-  const [css, js] = await Promise.all([inspectStatic(cssPath, cssContent), inspectStatic(jsPath, jsContent)]);
+  const [css, js, mermaid] = await Promise.all([
+    inspectStatic(cssPath, cssContent),
+    inspectStatic(jsPath, jsContent),
+    mermaidContent ? inspectStatic(mermaidPath, mermaidContent) : null,
+  ]);
 
   try {
     const info = await lstat(path);
     if (info.isSymbolicLink() || !info.isFile()) throw new Error(`Workflow viewer is not a regular file: ${path}`);
     const previous = await readFile(path);
-    if (previous.equals(content) && css.status === 'unchanged' && js.status === 'unchanged') {
-      return { path, content, status: 'unchanged', css, js };
+    if (previous.equals(content) && css.status === 'unchanged' && js.status === 'unchanged' && (!mermaid || mermaid.status === 'unchanged')) {
+      return { path, content, status: 'unchanged', css, js, mermaid };
     }
     if (forceOverwrite) {
       // Force must bypass parsing legacy viewer templates, which may not have current markers.
-      return { path, content, previous, status: 'update-planned', css, js };
+      return { path, content, previous, status: 'update-planned', css, js, mermaid };
     }
     if (destinationExists) {
       try {
         const oldTemplate = await readFile(join(destination, 'report', 'index.html'), 'utf8');
         if (previous.equals(renderViewer(oldTemplate, initialProjectPrompt))) {
-          return { path, content, previous, status: 'update-planned', css, js };
+          return { path, content, previous, status: 'update-planned', css, js, mermaid };
         }
-        return { path, content, status: 'conflict', css, js };
+        return { path, content, status: 'conflict', css, js, mermaid };
       } catch (error) {
         if (error.code !== 'ENOENT') throw error;
       }
     }
-    return { path, content, previous, status: 'update-planned', css, js };
+    return { path, content, previous, status: 'update-planned', css, js, mermaid };
   } catch (error) {
     if (error.code !== 'ENOENT') throw error;
-    return { path, content, status: 'planned', css, js };
+    return { path, content, status: 'planned', css, js, mermaid };
   }
 }
 
@@ -494,8 +505,9 @@ async function installViewer(target, viewer) {
   await mkdir(dirname(viewer.path), { recursive: true });
   await assertNoSymlinkPath(target, segments);
   await atomicWrite(viewer.path, viewer.content, { previous: viewer.previous, changedMessage: `Workflow viewer changed after preview: ${viewer.path}` });
-  for (const asset of [viewer.css, viewer.js].filter(Boolean)) {
+  for (const asset of [viewer.css, viewer.js, viewer.mermaid].filter(Boolean)) {
     if (asset.status === 'unchanged') continue;
+    await mkdir(dirname(asset.path), { recursive: true });
     await atomicWrite(asset.path, asset.content, { previous: asset.previous, changedMessage: `Viewer asset changed after preview: ${asset.path}` });
   }
 }
@@ -1599,7 +1611,7 @@ export async function initializePlugin({
     const instructionsNeedInstall = instructions !== undefined && (!instructionsExist || replaceInstructions);
     const promptsNeedInstall = prompts.some(({ status }) => status !== 'unchanged');
     return {
-      status: destinationExists && !reinstallRuntime && !instructionsNeedInstall && !promptsNeedInstall && viewer.status === 'unchanged' && viewer.css?.status === 'unchanged' && viewer.js?.status === 'unchanged' && readme.status === 'unchanged' && !legacy?.planned.length ? 'unchanged' : 'planned',
+      status: destinationExists && !reinstallRuntime && !instructionsNeedInstall && !promptsNeedInstall && viewer.status === 'unchanged' && viewer.css?.status === 'unchanged' && viewer.js?.status === 'unchanged' && (!viewer.mermaid || viewer.mermaid.status === 'unchanged') && readme.status === 'unchanged' && !legacy?.planned.length ? 'unchanged' : 'planned',
       runtimeStatus: reinstallRuntime ? 'reinstall-planned' : destinationExists ? 'unchanged' : 'planned',
       client,
       installPath: destination,

@@ -62,8 +62,57 @@ class Element {
   querySelector(selector) {
     const matches = (item) => selector.startsWith('.')
       ? item.classList.contains(selector.slice(1))
-      : item.tagName.toLowerCase() === selector;
+      : item.tagName.toLowerCase() === selector.toLowerCase();
     return descendants(this).slice(1).find(matches) || null;
+  }
+  querySelectorAll(selector) {
+    const matches = (item) => selector.startsWith('.')
+      ? item.classList.contains(selector.slice(1))
+      : item.tagName.toLowerCase() === selector.toLowerCase();
+    return descendants(this).slice(1).filter(matches);
+  }
+  closest(selector) {
+    const isClass = selector.startsWith('.');
+    const target = isClass ? selector.slice(1) : selector.toUpperCase();
+    let cur = this;
+    while (cur) {
+      if (isClass && cur.classList && cur.classList.contains(target)) return cur;
+      if (!isClass && cur.tagName === target) return cur;
+      cur = cur.parentElement;
+    }
+    return null;
+  }
+  prepend(...children) {
+    for (let i = children.length - 1; i >= 0; i--) {
+      this.insertBefore(children[i], this.children[0]);
+    }
+  }
+  cloneNode(deep = true) {
+    const clone = new Element(this.tagName.toLowerCase());
+    clone.text = this.text;
+    clone.attributes = { ...this.attributes };
+    clone._className = this._className;
+    clone.style = { ...this.style };
+    clone.dataset = { ...this.dataset };
+    if (deep) {
+      for (const child of this.children) {
+        clone.append(child.cloneNode(true));
+      }
+    }
+    return clone;
+  }
+  get innerHTML() {
+    return this.children.map((c) => `<${c.tagName.toLowerCase()}>${c.textContent}</${c.tagName.toLowerCase()}>`).join('') || this.text;
+  }
+  set innerHTML(val) {
+    this.text = String(val);
+    for (const child of this.children) child.parentElement = null;
+    this.children = [];
+    if (this.text.includes("<svg")) {
+      const svg = new Element("svg");
+      svg.text = this.text;
+      this.append(svg);
+    }
   }
   remove() {
     this.removed = true;
@@ -111,15 +160,21 @@ async function viewer(options = {}) {
   const documentElement = new Element('html');
   const timers = [];
   let nextTimerId = 0;
+  const body = new Element('body');
+  documentElement.append(body);
   const document = {
     documentElement,
+    body,
     getElementById: (id) => elements[id],
     createElement: (tag) => new Element(tag),
     createElementNS: (_, tag) => new Element(tag),
     createTextNode: (text) => { const node = new Element(); node.textContent = text; return node; },
+    addEventListener: (event, cb) => { (document.listeners = document.listeners || {})[event] = cb; },
+    removeEventListener: (event) => { if (document.listeners) delete document.listeners[event]; },
   };
   vm.runInNewContext(script, {
     document,
+    TextEncoder,
     localStorage: { getItem: () => null, setItem() {} },
     navigator: { clipboard: { writeText: async () => {} } },
     setTimeout: (callback, delay) => {
@@ -582,4 +637,166 @@ test('Melhorias de Usabilidade e Layout do Painel (US-001 a US-004)', async () =
   assert.equal(badge0.textContent, '0%');
   assert.equal(badge0.classList.contains('badge-success'), false);
   assert.equal(badge0.classList.contains('badge-progress'), false);
+});
+
+test('Renderização de Diagramas no Painel (US-001 a US-005)', async () => {
+  const [html, js, css] = await Promise.all([
+    readFile(new URL('../src/report/index.html', import.meta.url), 'utf8'),
+    readFile(new URL('../src/report/workflow.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/report/workflow.css', import.meta.url), 'utf8'),
+  ]);
+
+  // US-002: index.html inclui o script de vendor mermaid.min.js
+  assert.match(html, /<script\s+src="vendor\/mermaid\.min\.js">\s*<\/script>/);
+
+  // US-004 & US-005 & US-001: classes CSS de diagramas presentes
+  assert.match(css, /\.diagram-container/);
+  assert.match(css, /\.diagram-actions/);
+  assert.match(css, /\.diagram-modal/);
+  assert.match(css, /\.diagram-error/);
+  assert.match(css, /\.diagram-offline-fallback/);
+
+  // Preparação de contexto mock com mermaid
+  let mermaidInitializedWith = null;
+  let mermaidRunNodes = [];
+  const mermaidMock = {
+    initialize: (cfg) => { mermaidInitializedWith = cfg; },
+    parse: async (code) => {
+      if (code.includes('SYNTAX_ERROR')) throw new Error('Syntax error in graph');
+      return true;
+    },
+    run: async ({ nodes }) => {
+      mermaidRunNodes.push(...nodes);
+      for (const n of nodes) {
+        const svg = new Element('svg');
+        svg.text = '<svg content>';
+        n.append(svg);
+      }
+    },
+    render: async (id, code) => {
+      if (code.includes('SYNTAX_ERROR')) throw new Error('Syntax error in graph');
+      return { svg: '<svg content></svg>' };
+    },
+  };
+
+  let copiedText = '';
+  const viewerInstance = await viewer({
+    mermaid: mermaidMock,
+    navigator: {
+      clipboard: {
+        writeText: async (t) => { copiedText = t; },
+      },
+    },
+  });
+
+  // US-001: Reconhecimento de Linguagens no Parser renderMarkdown
+  // Cria nó com markdown contendo múltiplos blocos
+  const sampleMarkdown = [
+    '# Documento de Teste',
+    '```mermaid',
+    'flowchart TD',
+    'A-->B',
+    '```',
+    '```plantuml',
+    '@startuml',
+    'class User',
+    '@enduml',
+    '```',
+    '```puml',
+    'class Order',
+    '```',
+    '```',
+    '@startuml',
+    'class Account',
+    '@enduml',
+    '```',
+    '```javascript',
+    'const a = 1;',
+    '```',
+    '```mermaid',
+    'SYNTAX_ERROR invalid',
+    '```',
+  ].join('\n');
+
+  const nodes = [
+    makeNode('test-diagram-node', 'Tema de Diagramas', {
+      'business-epic': {
+        status: StepStatus.COMPLETED,
+        artifacts: [{ name: 'diag.md', path: 'workspace/diag.md' }],
+      },
+    }),
+  ];
+
+  await selectFiles(viewerInstance, [
+    runFile('run-diag.json', state('diag-init', nodes)),
+    {
+      name: 'diag.md',
+      webkitRelativePath: 'projeto/workspace/diag.md',
+      text: async () => sampleMarkdown,
+    },
+  ]);
+
+  // Clica no tema e na etapa business-epic para abrir os detalhes
+  const themeHeader = descendants(viewerInstance.content).find((item) => item.className === 'theme-header');
+  themeHeader.listeners.click();
+
+  const epicStep = descendants(viewerInstance.content).find((item) => item.attributes['data-step'] === 'business-epic');
+  await epicStep.listeners.click();
+
+  // Aguarda os loads assíncronos
+  await new Promise((r) => setTimeout(r, 50));
+
+  // 1. Validação US-001 (Parser)
+  const mermaidContainers = descendants(viewerInstance.details).filter((item) => item.classList && item.classList.contains('mermaid-container'));
+  assert.equal(mermaidContainers.length, 2); // 1 válido + 1 com erro
+
+  const plantumlContainers = descendants(viewerInstance.details).filter((item) => item.classList && item.classList.contains('plantuml-container'));
+  assert.equal(plantumlContainers.length, 3); // plantuml, puml e @startuml
+
+  const codeBlocks = descendants(viewerInstance.details).filter((item) => item.className === 'language-javascript');
+  assert.equal(codeBlocks.length, 1);
+
+  // 2. Validação US-002 (Mermaid Render & Tema)
+  assert.ok(mermaidInitializedWith);
+  assert.equal(mermaidInitializedWith.theme, 'dark'); // tema inicial é dark
+  const validMermaidEl = mermaidContainers[0].querySelector('.mermaid');
+  assert.ok(validMermaidEl.querySelector('svg'));
+
+  // Alterna o tema e verifica re-renderização
+  viewerInstance['theme-toggle'].listeners.click();
+  assert.equal(mermaidInitializedWith.theme, 'default');
+
+  // 3. Validação US-003 (PlantUML Encoder & fallback)
+  for (const pumlContainer of plantumlContainers) {
+    const pumlEl = pumlContainer.querySelector('.plantuml');
+    const img = pumlEl.querySelector('img');
+    assert.ok(img);
+    assert.match(img.getAttribute('src'), /https:\/\/www\.plantuml\.com\/plantuml\/svg\//);
+  }
+
+  // 4. Validação US-004 (Controles: Copiar e Zoom)
+  const firstActions = mermaidContainers[0].querySelector('.diagram-actions');
+  assert.ok(firstActions);
+  const copyBtn = firstActions.querySelector('.btn-copy-diagram');
+  assert.ok(copyBtn);
+  await copyBtn.listeners.click();
+  assert.match(copiedText, /flowchart TD/);
+
+  // Zoom / Modal
+  const zoomBtn = firstActions.querySelector('.btn-zoom-diagram');
+  assert.ok(zoomBtn);
+  zoomBtn.listeners.click();
+
+  const modal = descendants(viewerInstance.documentElement).find((item) => item.classList && item.classList.contains('diagram-modal'));
+  assert.ok(modal);
+  const closeBtn = modal.querySelector('.diagram-modal-controls').children.at(-1);
+  closeBtn.listeners.click();
+  assert.equal(modal.removed, true);
+
+  // 5. Validação US-005 (Resiliência / Erro de sintaxe)
+  const errorMermaidContainer = mermaidContainers[1];
+  const errorCard = errorMermaidContainer.querySelector('.diagram-error');
+  assert.ok(errorCard);
+  assert.match(errorCard.textContent, /Erro na sintaxe do diagrama Mermaid/);
+  assert.match(errorCard.textContent, /Syntax error in graph/);
 });
