@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -51,7 +51,7 @@ function createPluginFixture(t) {
   writeFileSync(path.join(sourceRoot, 'report', 'workflow.css'), readFileSync(new URL('../src/report/workflow.css', import.meta.url)));
   writeFileSync(path.join(sourceRoot, 'report', 'workflow.js'), readFileSync(new URL('../src/report/workflow.js', import.meta.url)));
   mkdirSync(path.join(sourceRoot, 'report', 'vendor'), { recursive: true });
-  writeFileSync(path.join(sourceRoot, 'report', 'vendor', 'mermaid.min.js'), readFileSync(new URL('../src/report/vendor/mermaid.min.js', import.meta.url)));
+  cpSync(new URL('../src/report/vendor', import.meta.url), path.join(sourceRoot, 'report', 'vendor'), { recursive: true });
   writeFileSync(path.join(sourceRoot, 'instructions', 'initial-project.md'), readFileSync(new URL('../resources/instructions/initial-project.md', import.meta.url)));
   writeFileSync(path.join(sourceRoot, 'templates', 'sample.md'), 'template\n');
   const promptHistory = Object.fromEntries(['1.1.0', '1.2.0'].map((version) => [

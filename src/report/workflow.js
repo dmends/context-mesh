@@ -593,6 +593,7 @@ function renderArtifact(name, artifact, sequence, loads) {
         output.append(md);
         await renderMermaidDiagrams(md);
         renderPlantUMLDiagrams(md);
+        applySyntaxHighlight(md);
       } else {
         output.append(element('pre', text));
       }
@@ -726,11 +727,34 @@ function renderMarkdown(text) {
         container.append(el);
         result.append(container);
       } else {
+        const container = element('div', '', 'code-block-wrapper');
+        const header = element('div', '', 'code-block-header');
+        const badge = element('span', lang || 'plaintext', 'code-lang-badge');
+        const copyBtn = element('button', 'Copiar', 'btn-copy-code');
+        copyBtn.type = 'button';
+        copyBtn.title = 'Copiar código';
+        copyBtn.setAttribute('aria-label', 'Copiar código');
+        copyBtn.addEventListener('click', async () => {
+          try {
+            if (navigator.clipboard) await navigator.clipboard.writeText(rawCode);
+            copyBtn.textContent = 'Copiado!';
+            copyBtn.classList.add('copied');
+            setTimeout(() => {
+              copyBtn.textContent = 'Copiar';
+              copyBtn.classList.remove('copied');
+            }, 2000);
+          } catch (e) {
+            copyBtn.textContent = 'Erro ao copiar';
+            showToast(notice, `Não foi possível copiar: ${e.message}`);
+          }
+        });
+        header.append(badge, copyBtn);
+
         const pre = element('pre', '');
-        const codeEl = element('code', rawCode);
-        if (lang) codeEl.className = `language-${lang}`;
+        const codeEl = element('code', rawCode, `hljs language-${lang || 'plaintext'}`);
         pre.append(codeEl);
-        result.append(pre);
+        container.append(header, pre);
+        result.append(container);
       }
       continue;
     }
@@ -1041,6 +1065,33 @@ if (typeof showDirectoryPicker === 'function' && typeof indexedDB !== 'undefined
   showToast(notice, 'Este navegador pode exigir que o projeto seja selecionado novamente ao abrir a página.');
 }
 
+
+
+function applySyntaxHighlight(container) {
+  if (typeof hljs === 'undefined' || !container) return;
+  let codeBlocks = [];
+  if (typeof container.querySelectorAll === 'function') {
+    codeBlocks = container.querySelectorAll('.code-block-wrapper code.hljs');
+    if (!codeBlocks || codeBlocks.length === 0) {
+      codeBlocks = container.querySelectorAll('code.hljs');
+    }
+    if (!codeBlocks || codeBlocks.length === 0) {
+      codeBlocks = container.querySelectorAll('.hljs');
+    }
+  }
+  for (const block of codeBlocks) {
+    try {
+      if (typeof hljs.highlightElement === 'function') {
+        hljs.highlightElement(block);
+      }
+      if (typeof hljs.lineNumbersBlock === 'function') {
+        hljs.lineNumbersBlock(block);
+      }
+    } catch (err) {
+      console.warn('Falha ao aplicar realce no bloco de código:', err);
+    }
+  }
+}
 
 /* ── Diagram Helpers (Mermaid & PlantUML) ── */
 

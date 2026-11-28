@@ -1801,7 +1801,99 @@
       display: block;
     }
 
-        /* ── Responsive Breakpoints ── */
+        /* ── Code Blocks (Highlight.js & Line Numbers) ── */
+    .markdown .code-block-wrapper {
+      margin: 16px 0;
+      border-radius: 8px;
+      border: 1px solid var(--border-subtle, #313244);
+      background: #181825;
+      overflow: hidden;
+    }
+
+    .markdown .code-block-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 12px;
+      background: #181825;
+      border-bottom: 1px solid var(--border-subtle, #313244);
+    }
+
+    .markdown .code-lang-badge {
+      font-size: 11px;
+      text-transform: uppercase;
+      font-weight: 600;
+      color: #a6adc8;
+      letter-spacing: 0.5px;
+      font-family: var(--font-mono, monospace);
+    }
+
+    .markdown .btn-copy-code {
+      background: transparent;
+      border: 1px solid #45475a;
+      border-radius: 4px;
+      color: #cdd6f4;
+      font-size: 12px;
+      padding: 2px 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-family: inherit;
+    }
+
+    .markdown .btn-copy-code:hover {
+      background: #313244;
+      color: #fff;
+    }
+
+    .markdown .btn-copy-code.copied {
+      border-color: #a6e3a1;
+      color: #a6e3a1;
+    }
+
+    .markdown .code-block-wrapper pre {
+      margin: 0;
+      padding: 12px 16px;
+      background: #1e1e2e;
+      border-radius: 0 0 8px 8px;
+      overflow-x: auto;
+    }
+
+    .markdown .code-block-wrapper code.hljs {
+      font-family: var(--font-mono, "JetBrains Mono", "Fira Code", monospace);
+      font-size: 13px;
+      line-height: 1.5;
+      background: transparent;
+      padding: 0;
+    }
+
+    /* ── Line Numbers ── */
+    .markdown .code-block-wrapper table.hljs-ln {
+      border-collapse: collapse;
+      width: 100%;
+    }
+
+    .markdown .code-block-wrapper table.hljs-ln td {
+      padding: 0;
+      border: 0;
+    }
+
+    .markdown .code-block-wrapper td.hljs-ln-numbers {
+      user-select: none;
+      -webkit-user-select: none;
+      text-align: right;
+      color: #585b70;
+      border-right: 1px solid #313244;
+      padding-right: 8px !important;
+      min-width: 24px;
+      vertical-align: top;
+    }
+
+    .markdown .code-block-wrapper td.hljs-ln-code {
+      padding-left: 12px !important;
+      vertical-align: top;
+    }
+
+    /* ── Responsive Breakpoints ── */
     @media (max-width: 900px) {
       .intro {
         padding: 10px 20px;

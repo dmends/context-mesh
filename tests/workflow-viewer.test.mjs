@@ -60,15 +60,29 @@ class Element {
   setAttribute(name, value) { this.attributes[name] = String(value); }
   getAttribute(name) { return this.attributes[name] ?? null; }
   querySelector(selector) {
-    const matches = (item) => selector.startsWith('.')
-      ? item.classList.contains(selector.slice(1))
-      : item.tagName.toLowerCase() === selector.toLowerCase();
+    const parts = selector.trim().split(/\s+/);
+    const target = parts[parts.length - 1];
+    const matches = (item) => {
+      if (target.startsWith('.')) return item.classList.contains(target.slice(1));
+      if (target.includes('.')) {
+        const [tag, cls] = target.split('.');
+        return (!tag || item.tagName.toLowerCase() === tag.toLowerCase()) && item.classList.contains(cls);
+      }
+      return item.tagName.toLowerCase() === target.toLowerCase();
+    };
     return descendants(this).slice(1).find(matches) || null;
   }
   querySelectorAll(selector) {
-    const matches = (item) => selector.startsWith('.')
-      ? item.classList.contains(selector.slice(1))
-      : item.tagName.toLowerCase() === selector.toLowerCase();
+    const parts = selector.trim().split(/\s+/);
+    const target = parts[parts.length - 1];
+    const matches = (item) => {
+      if (target.startsWith('.')) return item.classList.contains(target.slice(1));
+      if (target.includes('.')) {
+        const [tag, cls] = target.split('.');
+        return (!tag || item.tagName.toLowerCase() === tag.toLowerCase()) && item.classList.contains(cls);
+      }
+      return item.tagName.toLowerCase() === target.toLowerCase();
+    };
     return descendants(this).slice(1).filter(matches);
   }
   closest(selector) {
@@ -753,7 +767,7 @@ test('Renderização de Diagramas no Painel (US-001 a US-005)', async () => {
   const plantumlContainers = descendants(viewerInstance.details).filter((item) => item.classList && item.classList.contains('plantuml-container'));
   assert.equal(plantumlContainers.length, 3); // plantuml, puml e @startuml
 
-  const codeBlocks = descendants(viewerInstance.details).filter((item) => item.className === 'language-javascript');
+  const codeBlocks = descendants(viewerInstance.details).filter((item) => item.classList && item.classList.contains('language-javascript'));
   assert.equal(codeBlocks.length, 1);
 
   // 2. Validação US-002 (Mermaid Render & Tema)
@@ -799,4 +813,139 @@ test('Renderização de Diagramas no Painel (US-001 a US-005)', async () => {
   assert.ok(errorCard);
   assert.match(errorCard.textContent, /Erro na sintaxe do diagrama Mermaid/);
   assert.match(errorCard.textContent, /Syntax error in graph/);
+});
+
+test('Destaque de Sintaxe e Formatação de Código no Painel (US-001 a US-004)', async () => {
+  const [html, js, css] = await Promise.all([
+    readFile(new URL('../src/report/index.html', import.meta.url), 'utf8'),
+    readFile(new URL('../src/report/workflow.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/report/workflow.css', import.meta.url), 'utf8'),
+  ]);
+
+  // US-002 & US-004: index.html inclui estilos e scripts vendor
+  assert.match(html, /<link\s+rel="stylesheet"\s+href="vendor\/atom-one-dark\.min\.css">/);
+  assert.match(html, /<script\s+src="vendor\/highlight\.min\.js">\s*<\/script>/);
+  assert.match(html, /<script\s+src="vendor\/highlightjs-line-numbers\.min\.js">\s*<\/script>/);
+
+  // US-001, US-003 & US-004: classes CSS presentes
+  assert.match(css, /\.markdown\s+\.code-block-wrapper/);
+  assert.match(css, /\.markdown\s+\.code-block-header/);
+  assert.match(css, /\.markdown\s+\.code-lang-badge/);
+  assert.match(css, /\.markdown\s+\.btn-copy-code/);
+  assert.match(css, /\.markdown\s+\.code-block-wrapper\s+table\.hljs-ln/);
+  assert.match(css, /\.markdown\s+\.code-block-wrapper\s+td\.hljs-ln-numbers/);
+  assert.match(css, /user-select:\s*none/);
+
+  // Mocks para hljs e clipboard
+  const highlightedBlocks = [];
+  const lineNumberedBlocks = [];
+  const hljsMock = {
+    highlightElement: (block) => {
+      highlightedBlocks.push(block);
+    },
+    lineNumbersBlock: (block) => {
+      lineNumberedBlocks.push(block);
+    },
+  };
+
+  let copiedText = '';
+  const viewerInstance = await viewer({
+    hljs: hljsMock,
+    navigator: {
+      clipboard: {
+        writeText: async (t) => { copiedText = t; },
+      },
+    },
+  });
+
+  const sampleMarkdown = [
+    '# Especificação Técnica',
+    '```javascript',
+    'const smith = {',
+    '  engine: "active"',
+    '};',
+    '```',
+    '```json',
+    '{',
+    '  "name": "smith",',
+    '  "version": "1.0.0"',
+    '}',
+    '```',
+    '```',
+    'texto puro sem linguagem',
+    '```',
+    '```mermaid',
+    'flowchart TD',
+    'A-->B',
+    '```',
+  ].join('\n');
+
+  const nodes = [
+    makeNode('test-syntax-node', 'Tema de Realce', {
+      'tech-solution-specification': {
+        status: StepStatus.COMPLETED,
+        artifacts: [{ name: 'spec.md', path: 'workspace/spec.md' }],
+      },
+    }),
+  ];
+
+  await selectFiles(viewerInstance, [
+    runFile('run-syntax.json', state('syntax-init', nodes)),
+    {
+      name: 'spec.md',
+      webkitRelativePath: 'projeto/workspace/spec.md',
+      text: async () => sampleMarkdown,
+    },
+  ]);
+
+  const themeHeader = descendants(viewerInstance.content).find((item) => item.className === 'theme-header');
+  themeHeader.listeners.click();
+
+  const specStep = descendants(viewerInstance.content).find((item) => item.attributes['data-step'] === 'tech-solution-specification');
+  await specStep.listeners.click();
+  await new Promise((r) => setTimeout(r, 50));
+
+  // 1. Validação US-001 (Roteador de Cercas Unificado)
+  const codeWrappers = descendants(viewerInstance.details).filter((item) => item.classList && item.classList.contains('code-block-wrapper'));
+  assert.equal(codeWrappers.length, 3); // javascript, json, plaintext
+
+  const jsBlock = codeWrappers[0].querySelector('code');
+  assert.ok(jsBlock.classList.contains('hljs'));
+  assert.ok(jsBlock.classList.contains('language-javascript'));
+
+  const jsonBlock = codeWrappers[1].querySelector('code');
+  assert.ok(jsonBlock.classList.contains('hljs'));
+  assert.ok(jsonBlock.classList.contains('language-json'));
+
+  const plainBlock = codeWrappers[2].querySelector('code');
+  assert.ok(plainBlock.classList.contains('hljs'));
+  assert.ok(plainBlock.classList.contains('language-plaintext'));
+
+  // Diagrama permanece separado
+  const mermaidContainers = descendants(viewerInstance.details).filter((item) => item.classList && item.classList.contains('mermaid-container'));
+  assert.equal(mermaidContainers.length, 1);
+  assert.equal(mermaidContainers[0].querySelector('code'), null);
+
+  // 2. Validação US-002 (Realce de Sintaxe com Highlight.js)
+  assert.equal(highlightedBlocks.length, 3);
+
+  // 3. Validação US-003 (Cabeçalho com Badge e Botão Copiar)
+  for (const wrapper of codeWrappers) {
+    const header = wrapper.querySelector('.code-block-header');
+    assert.ok(header);
+    const badge = header.querySelector('.code-lang-badge');
+    assert.ok(badge);
+    const copyBtn = header.querySelector('.btn-copy-code');
+    assert.ok(copyBtn);
+  }
+
+  // Testa cópia no primeiro bloco (JavaScript)
+  const firstCopyBtn = codeWrappers[0].querySelector('.btn-copy-code');
+  await firstCopyBtn.listeners.click();
+  assert.match(copiedText, /const smith = {/);
+  assert.equal(firstCopyBtn.textContent, 'Copiado!');
+  assert.ok(firstCopyBtn.classList.contains('copied'));
+
+  // 4. Validação US-004 (Numeração de Linhas)
+  assert.equal(lineNumberedBlocks.length, 3);
 });
